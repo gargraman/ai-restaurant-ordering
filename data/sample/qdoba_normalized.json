@@ -1,0 +1,91 @@
+{
+  "metadata": {
+    "schemaVersion": "0.1.0",
+    "sourcePlatform": "ezcater",
+    "sourcePath": "/catering/qdoba-boston-causeway-st",
+    "engine": "chatgpt-normalizer",
+    "scrapedAt": "2026-01-25T16:48:55.776416Z",
+    "normalizedAt": "2026-01-25T16:48:55.776429Z",
+    "scrapeRunId": "a3c28014-0c3a-4a1d-a041-c118a3400681",
+    "contentHash": "",
+    "scrapedMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    },
+    "actualMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    }
+  },
+  "restaurant": {
+    "name": "QDOBA Mexican Eats",
+    "cuisine": [
+      "Mexican"
+    ],
+    "location": {
+      "address": "101 Causeway St",
+      "city": "Boston",
+      "state": "MA",
+      "zipCode": "02114",
+      "country": "USA",
+      "coordinates": {
+        "latitude": 42.3655,
+        "longitude": -71.0616
+      }
+    }
+  },
+  "menus": [
+    {
+      "menuId": "catering",
+      "name": "Catering",
+      "menuGroups": [
+        {
+          "groupId": "boxed",
+          "name": "Boxed Lunches",
+          "menuItems": [
+            {
+              "itemId": "chicken-burrito",
+              "name": "Chicken Burrito Boxed Lunch",
+              "price": {
+                "basePrice": 12.25,
+                "displayPrice": 12.25,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual boxed meal"
+              }
+            }
+          ]
+        },
+        {
+          "groupId": "taco-kits",
+          "name": "Taco Kits",
+          "menuItems": [
+            {
+              "itemId": "taco-chicken",
+              "name": "Taco Kit w/ Grilled Adobo Chicken",
+              "price": {
+                "basePrice": 122.0,
+                "displayPrice": 122.0,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 10,
+                "unit": "serves",
+                "description": "Serves 10"
+              },
+              "minimumOrder": {
+                "quantity": 1,
+                "unit": "kit"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

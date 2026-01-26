@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "schemaVersion": "0.1.0",
+    "sourcePlatform": "ezcater",
+    "sourcePath": "/catering/bailey-and-sage-boston",
+    "engine": "chatgpt-normalizer",
+    "scrapedAt": "2026-01-25T16:51:03.413729Z",
+    "normalizedAt": "2026-01-25T16:51:03.413744Z",
+    "scrapeRunId": "57b27e0f-04b9-4084-ba4c-4fcaa0619bfa",
+    "contentHash": "",
+    "scrapedMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    },
+    "actualMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    }
+  },
+  "restaurant": {
+    "name": "Bailey & Sage",
+    "cuisine": [
+      "American"
+    ],
+    "location": {
+      "address": "53 State St",
+      "city": "Boston",
+      "state": "MA",
+      "zipCode": "02109",
+      "country": "USA",
+      "coordinates": {
+        "latitude": 42.3589,
+        "longitude": -71.0578
+      }
+    }
+  },
+  "menus": [
+    {
+      "name": "Catering",
+      "menuGroups": [
+        {
+          "name": "Breakfast",
+          "menuItems": [
+            {
+              "name": "Fresh Fruit Salad",
+              "price": {
+                "basePrice": 6.95,
+                "displayPrice": 6.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual"
+              }
+            },
+            {
+              "name": "Yogurt Parfaits",
+              "price": {
+                "basePrice": 5.95,
+                "displayPrice": 5.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Boxed Lunches",
+          "menuItems": [
+            {
+              "name": "Specialty Box",
+              "price": {
+                "basePrice": 22.95,
+                "displayPrice": 22.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual boxed lunch"
+              }
+            },
+            {
+              "name": "Signature Bag",
+              "price": {
+                "basePrice": 22.95,
+                "displayPrice": 22.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual bagged lunch"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

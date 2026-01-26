@@ -1,0 +1,422 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://catering-rewards.com/schemas/normalized-menu/v0.1.0",
+  "version": "0.1.0",
+  "title": "Catering Menu",
+  "description": "Simplified schema based on restaurant menu schema for scraping catering menus",
+  "type": "object",
+  "required": ["restaurant", "menus"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "description": "Version of the normalized schema used",
+          "default": "0.1.0"
+        },
+        "sourcePlatform": {
+          "type": "string",
+          "description": "Platform from which menu was scraped"
+        },
+        "sourcePath": {
+          "type": "string",
+          "description": "Path to restaurant on source platform"
+        },
+        "engine": {
+          "type": "string",
+          "description": "Scraping engine used"
+        },
+        "scrapedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when data was scraped"
+        },
+        "normalizedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when normalization completed"
+        },
+        "scrapeRunId": {
+          "type": "string",
+          "description": "ID of the scrape run"
+        },
+        "contentHash": {
+          "type": "string",
+          "description": "SHA-256 hash of the normalized content"
+        },
+        "scrapedMenuCounts": {
+          "$ref": "#/definitions/MenuCounts"
+        },
+        "actualMenuCounts": {
+          "$ref": "#/definitions/MenuCounts"
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "schemaVersion": "0.1.0"
+      }
+    },
+    "restaurant": {
+      "type": "object",
+      "required": ["name", "location"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the restaurant"
+        },
+        "cuisine": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Cuisine types (e.g., Italian, Mexican, Asian)"
+        },
+        "location": {
+          "type": "object",
+          "required": ["address", "city", "state", "zipCode", "coordinates"],
+          "properties": {
+            "address": { "type": "string" },
+            "city": { "type": "string" },
+            "state": { "type": "string" },
+            "zipCode": { "type": "string" },
+            "country": { "type": "string" },
+            "coordinates": {
+              "type": "object",
+              "required": ["latitude", "longitude"],
+              "properties": {
+                "latitude": { "type": "number" },
+                "longitude": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "menus": {
+      "type": "array",
+      "description": "Top-level menu categories (e.g., Food, Drinks, Lunch, Dinner, Catering)",
+      "items": {
+        "$ref": "#/definitions/Menu"
+      },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "MenuCounts": {
+      "type": "object",
+      "description": "Count of menus, groups, and items",
+      "properties": {
+        "menus": {
+          "type": "integer"
+        },
+        "menuGroups": {
+          "type": "integer"
+        },
+        "menuItems": {
+          "type": "integer"
+        }
+      }
+    },
+    "Menu": {
+      "type": "object",
+      "description": "Highest level category (e.g., Lunch, Dinner)",
+      "required": ["name", "menuGroups"],
+      "properties": {
+        "menuId": {
+          "type": "string",
+          "description": "Unique identifier for the menu"
+        },
+        "name": {
+          "type": "string",
+          "description": "Menu name (e.g., Lunch, Dinner, Bar, Breakfast, Catering)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the menu"
+        },
+        "displayOrder": {
+          "type": "integer",
+          "description": "Order in which menu appears in UI"
+        },
+        "menuGroups": {
+          "type": "array",
+          "description": "Groups within this menu (e.g., Seasonal Specials, Sandwiches & Wraps, Appetizers, Desserts)",
+          "items": { "$ref": "#/definitions/MenuGroup" },
+          "minItems": 1
+        }
+      }
+    },
+    "MenuGroup": {
+      "type": "object",
+      "description": "Group of related items (e.g., Seasonal Specials, Sandwiches & Wraps, Gluten-Free, Bagged Lunches, Breakfast, Appetizers, Catering Packages, Burgers/Lobster Rolls/Hot Dogs, Hot Entrees & Pasta, Individually Packaged Catering, Soups, Salads, Sides, Desserts, Beverages, Miscellaneous)",
+      "required": ["name"],
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "Unique identifier for the group"
+        },
+        "name": {
+          "type": "string",
+          "description": "Group name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the group"
+        },
+        "displayOrder": {
+          "type": "integer",
+          "description": "Order in which group appears within menu"
+        },
+        "menuItems": {
+          "type": "array",
+          "description": "Items in this group",
+          "items": { "$ref": "#/definitions/MenuItem" },
+          "minItems": 0
+        }
+      }
+    },
+    "MenuItem": {
+      "type": "object",
+      "description": "Individual menu offering",
+      "required": ["name"],
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "Unique identifier for the item"
+        },
+        "name": {
+          "type": "string",
+          "description": "Item name (e.g., Roast Chicken, Pasta Primavera)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the item"
+        },
+        "price": {
+          "$ref": "#/definitions/Price"
+        },
+        "dietaryLabels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "vegetarian",
+              "vegan",
+              "gluten-free",
+              "dairy-free",
+              "nut-free",
+              "halal",
+              "kosher",
+              "organic",
+              "keto",
+              "paleo",
+              "low-carb"
+            ]
+          },
+          "description": "Dietary classifications"
+        },
+        "images": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Image" },
+          "description": "Images of the item"
+        },
+        "displayOrder": {
+          "type": "integer",
+          "description": "Order in which item appears"
+        },
+        "servingSize": {
+          "type": "object",
+          "properties": {
+            "amount": { "type": "number" },
+            "unit": {
+              "type": "string",
+              "description": "e.g., oz, g, ml, pieces, serves 10-12"
+            },
+            "description": { "type": "string" }
+          }
+        },
+        "minimumOrder": {
+          "type": "object",
+          "properties": {
+            "quantity": { "type": "number" },
+            "unit": {
+              "type": "string",
+              "description": "e.g., servings, trays, pieces, dozen"
+            }
+          },
+          "description": "Minimum order requirement for catering items"
+        },
+        "modifierGroups": {
+          "type": "array",
+          "description": "Customization options for this item",
+          "items": { "$ref": "#/definitions/ModifierGroup" }
+        },
+        "portions": {
+          "type": "array",
+          "description": "Different portion sizes (e.g., Small, Medium, Large)",
+          "items": { "$ref": "#/definitions/Portion" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags for search and filtering (e.g., popular, new, chef-special, seasonal)"
+        }
+      }
+    },
+    "ModifierGroup": {
+      "type": "object",
+      "description": "Group of modifiers for customization (e.g., Cheese, Condiments, Sides)",
+      "required": ["name", "modifiers"],
+      "properties": {
+        "modifierGroupId": {
+          "type": "string",
+          "description": "Unique identifier for the modifier group"
+        },
+        "name": {
+          "type": "string",
+          "description": "Modifier group name (e.g., Cheese, Toppings, Temperature)"
+        },
+        "description": {
+          "type": "string"
+        },
+        "displayOrder": {
+          "type": "integer"
+        },
+        "selectionType": {
+          "type": "string",
+          "enum": ["single", "multiple"],
+          "default": "multiple",
+          "description": "Whether single or multiple modifiers can be selected"
+        },
+        "isRequired": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether selection is mandatory"
+        },
+        "minSelections": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Minimum number of selections required"
+        },
+        "maxSelections": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of selections allowed (for multiple type)"
+        },
+        "defaultSelections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Default modifier IDs pre-selected"
+        },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Modifier" },
+          "minItems": 1
+        },
+        "appliesTo": {
+          "type": "string",
+          "enum": ["menuGroup", "menuItem"],
+          "description": "Whether applied to group or individual item"
+        }
+      }
+    },
+    "Modifier": {
+      "type": "object",
+      "description": "Individual modifier option (e.g., Cheddar, Provolone, Rare, Well Done)",
+      "required": ["name"],
+      "properties": {
+        "modifierId": {
+          "type": "string",
+          "description": "Unique identifier for the modifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Modifier name"
+        },
+        "description": {
+          "type": "string"
+        },
+        "price": {
+          "$ref": "#/definitions/Price"
+        },
+        "displayOrder": {
+          "type": "integer"
+        },
+        "isDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is the default selection"
+        }
+      }
+    },
+    "Portion": {
+      "type": "object",
+      "description": "Different size options for a menu item",
+      "required": ["name", "price"],
+      "properties": {
+        "portionId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "e.g., Small, Medium, Large, Half, Full"
+        },
+        "description": {
+          "type": "string"
+        },
+        "price": {
+          "$ref": "#/definitions/Price"
+        },
+        "servingSize": {
+          "type": "object",
+          "properties": {
+            "amount": { "type": "number" },
+            "unit": { "type": "string" }
+          }
+        },
+        "isDefault": {
+          "type": "boolean",
+          "default": false
+        },
+        "displayOrder": {
+          "type": "integer"
+        }
+      }
+    },
+    "Price": {
+      "type": "object",
+      "description": "Simplified pricing information",
+      "properties": {
+        "basePrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Base price of the item"
+        },
+        "displayPrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Price to display (after discounts/adjustments)"
+        },
+        "currency": {
+          "type": "string",
+          "default": "USD"
+        }
+      }
+    },
+    "Image": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Image URL"
+        },
+        "altText": {
+          "type": "string",
+          "description": "Alternative text for accessibility"
+        }
+      }
+    }
+  }
+}

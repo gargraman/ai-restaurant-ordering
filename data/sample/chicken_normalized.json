@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "schemaVersion": "0.1.0",
+    "sourcePlatform": "ezcater",
+    "sourcePath": "/catering/the-chicken-and-rice-guys-boston-washington-st",
+    "engine": "chatgpt-normalizer",
+    "scrapedAt": "2026-01-25T16:51:03.414317Z",
+    "normalizedAt": "2026-01-25T16:51:03.414325Z",
+    "scrapeRunId": "ae31a588-19b3-4213-80be-ba079e5a9aff",
+    "contentHash": "",
+    "scrapedMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    },
+    "actualMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    }
+  },
+  "restaurant": {
+    "name": "The Chicken & Rice Guys",
+    "cuisine": [
+      "Middle Eastern",
+      "Halal"
+    ],
+    "location": {
+      "address": "280 Washington St",
+      "city": "Boston",
+      "state": "MA",
+      "zipCode": "02108",
+      "country": "USA",
+      "coordinates": {
+        "latitude": 42.3573,
+        "longitude": -71.0586
+      }
+    }
+  },
+  "menus": [
+    {
+      "name": "Catering",
+      "menuGroups": [
+        {
+          "name": "Hot Entrees",
+          "menuItems": [
+            {
+              "name": "Halal Grilled Chicken Tray",
+              "price": {
+                "basePrice": 75,
+                "displayPrice": 75,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 10,
+                "unit": "serves",
+                "description": "Serves 10"
+              },
+              "minimumOrder": {
+                "quantity": 1,
+                "unit": "tray"
+              }
+            },
+            {
+              "name": "Gyro Plate",
+              "price": {
+                "basePrice": 16.5,
+                "displayPrice": 16.5,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sides",
+          "menuItems": [
+            {
+              "name": "Seasoned Rice",
+              "price": {
+                "basePrice": 40,
+                "displayPrice": 40,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 10,
+                "unit": "serves",
+                "description": "Serves 10"
+              }
+            },
+            {
+              "name": "Hummus",
+              "price": {
+                "basePrice": 35,
+                "displayPrice": 35,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 15,
+                "unit": "serves",
+                "description": "Serves 15"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

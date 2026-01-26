@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "schemaVersion": "0.1.0",
+    "sourcePlatform": "ezcater",
+    "sourcePath": "/catering/pad-thai-cafe-3",
+    "engine": "chatgpt-normalizer",
+    "scrapedAt": "2026-01-25T16:51:03.414741Z",
+    "normalizedAt": "2026-01-25T16:51:03.414749Z",
+    "scrapeRunId": "29dd2bb0-0fbd-4af8-9eb9-777c4bd4a4d3",
+    "contentHash": "",
+    "scrapedMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    },
+    "actualMenuCounts": {
+      "menus": 1,
+      "menuGroups": 2,
+      "menuItems": 4
+    }
+  },
+  "restaurant": {
+    "name": "Pad Thai Cafe",
+    "cuisine": [
+      "Thai"
+    ],
+    "location": {
+      "address": "6 Hemenway St",
+      "city": "Boston",
+      "state": "MA",
+      "zipCode": "02215",
+      "country": "USA",
+      "coordinates": {
+        "latitude": 42.3445,
+        "longitude": -71.0963
+      }
+    }
+  },
+  "menus": [
+    {
+      "name": "Catering",
+      "menuGroups": [
+        {
+          "name": "Noodles",
+          "menuItems": [
+            {
+              "name": "Pad Thai Tray",
+              "price": {
+                "basePrice": 65,
+                "displayPrice": 65,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 5,
+                "unit": "serves",
+                "description": "Serves 5"
+              },
+              "minimumOrder": {
+                "quantity": 1,
+                "unit": "tray"
+              }
+            },
+            {
+              "name": "Pad Thai",
+              "price": {
+                "basePrice": 11.95,
+                "displayPrice": 11.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 1,
+                "unit": "person",
+                "description": "Individual"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Appetizers",
+          "menuItems": [
+            {
+              "name": "Spring Roll",
+              "price": {
+                "basePrice": 7.95,
+                "displayPrice": 7.95,
+                "currency": "USD"
+              },
+              "servingSize": {
+                "amount": 2,
+                "unit": "pieces",
+                "description": "2 pieces"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
