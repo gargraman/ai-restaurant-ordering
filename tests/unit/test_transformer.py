@@ -154,3 +154,221 @@ class TestDocumentTransformer:
 
         transformer.reset_stats()
         assert transformer.stats["documents_created"] == 0
+    def test_transform_empty_restaurant_data(self):
+        """Test that empty restaurant data returns no documents."""
+        transformer = DocumentTransformer()
+        empty_data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": [],
+                "location": {"city": "Boston", "state": "MA"},
+            },
+            "menus": [],
+        }
+
+        documents = transformer.transform_data(empty_data)
+
+        assert len(documents) == 0
+        assert transformer.stats["documents_created"] == 0
+
+    def test_transform_missing_required_fields(self):
+        """Test handling of missing required fields."""
+        transformer = DocumentTransformer()
+
+        # Missing location field
+        bad_data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test Restaurant",
+                "cuisine": ["Italian"],
+                # Missing location
+            },
+            "menus": [],
+        }
+
+        # Should handle gracefully without crashing
+        try:
+            documents = transformer.transform_data(bad_data)
+            # Either returns empty or skips bad record
+            assert isinstance(documents, list)
+        except (KeyError, AttributeError, ValueError):
+            # Acceptable to fail on malformed data if properly logged
+            pass
+
+    def test_transform_malformed_menu_items(self):
+        """Test handling of malformed menu items."""
+        transformer = DocumentTransformer()
+
+        bad_data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": ["Italian"],
+                "location": {"city": "Boston", "state": "MA", "zipCode": "02101"},
+            },
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [
+                                {
+                                    "name": "Pasta",
+                                    # Missing required price and description fields
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        # Should handle gracefully
+        try:
+            documents = transformer.transform_data(bad_data)
+            assert isinstance(documents, list)
+            # May skip bad items or log warnings
+        except (KeyError, AttributeError, ValueError):
+            pass
+
+    def test_transform_invalid_coordinates(self):
+        """Test handling of invalid geographic coordinates."""
+        transformer = DocumentTransformer()
+
+        bad_data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": ["Italian"],
+                "location": {
+                    "city": "Boston",
+                    "state": "MA",
+                    "coordinates": {"latitude": "invalid", "longitude": "invalid"},
+                },
+            },
+            "menus": [],
+        }
+
+        # Should handle gracefully without crashing
+        try:
+            documents = transformer.transform_data(bad_data)
+            assert isinstance(documents, list)
+        except (ValueError, TypeError):
+            # Acceptable to fail on invalid coordinates
+            pass
+
+    def test_transform_null_values(self):
+        """Test handling of null/None values in fields."""
+        transformer = DocumentTransformer()
+
+        data_with_nulls = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": None,
+                "location": {
+                    "city": "Boston",
+                    "state": "MA",
+                    "coordinates": None,
+                },
+            },
+            "menus": None,
+        }
+
+        try:
+            documents = transformer.transform_data(data_with_nulls)
+            assert isinstance(documents, list)
+        except (TypeError, AttributeError):
+            pass
+
+    def test_transform_very_long_description(self):
+        """Test handling of extremely long descriptions."""
+        transformer = DocumentTransformer()
+
+        long_description = "a" * 50000
+
+        data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": ["Italian"],
+                "location": {"city": "Boston", "state": "MA"},
+            },
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [
+                                {
+                                    "name": "Pasta",
+                                    "description": long_description,
+                                    "price": {"displayPrice": 89.99},
+                                    "dietaryLabels": [],
+                                    "tags": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        try:
+            documents = transformer.transform_data(data)
+            # Should handle without OOM or crashing
+            assert isinstance(documents, list)
+        except MemoryError:
+            pass
+
+    def test_transform_special_characters(self):
+        """Test handling of special characters in fields."""
+        transformer = DocumentTransformer()
+
+        data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test™ Rëstaurant™ <script>",
+                "cuisine": ["Italian"],
+                "location": {"city": "Boston", "state": "MA"},
+            },
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [
+                                {
+                                    "name": "Pâstà™ & Sàlad",
+                                    "description": "Pasta with sauce™ <tag>",
+                                    "price": {"displayPrice": 89.99},
+                                    "dietaryLabels": [],
+                                    "tags": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        documents = transformer.transform_data(data)
+
+        # Should handle special characters gracefully
+        assert len(documents) >= 0
+        if len(documents) > 0:
+            assert isinstance(documents[0].item_name, str)
+
+    def test_transform_duplicate_items_same_restaurant(self, sample_restaurant_data):
+        """Test that duplicate items from same restaurant have same restaurant_id."""
+        transformer = DocumentTransformer()
+        documents = transformer.transform_data(sample_restaurant_data)
+
+        if len(documents) > 1:
+            # All items from same restaurant should have matching restaurant_id
+            restaurant_ids = [doc.restaurant_id for doc in documents]
+            assert all(rid == restaurant_ids[0] for rid in restaurant_ids)

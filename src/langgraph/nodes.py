@@ -1,24 +1,31 @@
 """LangGraph node implementations."""
 
+import asyncio
 import json
 from collections import defaultdict
-from typing import Any
 
 import structlog
 from langchain_openai import ChatOpenAI
 
 from src.config import get_settings
-from src.models.state import GraphState, SearchFilters
 from src.langgraph.prompts import (
-    INTENT_DETECTION_PROMPT,
+    CLARIFICATION_PROMPT,
     ENTITY_EXTRACTION_PROMPT,
+    INTENT_DETECTION_PROMPT,
     QUERY_EXPANSION_PROMPT,
     RAG_GENERATION_PROMPT,
-    CLARIFICATION_PROMPT,
 )
+from src.models.state import GraphState, SearchFilters
+from src.search.bm25 import BM25Searcher
+from src.search.vector import VectorSearcher
 
 logger = structlog.get_logger()
 settings = get_settings()
+
+# Singleton storage for searchers
+_bm25_searcher: BM25Searcher | None = None
+_vector_searcher: VectorSearcher | None = None
+_vector_searcher_lock = asyncio.Lock()
 
 
 def _get_llm() -> ChatOpenAI:
@@ -28,6 +35,28 @@ def _get_llm() -> ChatOpenAI:
         api_key=settings.openai_api_key,
         temperature=0,
     )
+
+
+def _get_bm25_searcher() -> BM25Searcher:
+    """Get or create BM25 searcher singleton."""
+    global _bm25_searcher
+    if _bm25_searcher is None:
+        _bm25_searcher = BM25Searcher()
+        logger.info("bm25_searcher_initialized")
+    return _bm25_searcher
+
+
+async def _get_vector_searcher() -> VectorSearcher:
+    """Get or create VectorSearcher singleton with async connection."""
+    global _vector_searcher
+    if _vector_searcher is not None and _vector_searcher.pool is not None:
+        return _vector_searcher
+    async with _vector_searcher_lock:
+        if _vector_searcher is None or _vector_searcher.pool is None:
+            _vector_searcher = VectorSearcher()
+            await _vector_searcher.connect()
+            logger.info("vector_searcher_initialized")
+    return _vector_searcher
 
 
 async def context_resolver_node(state: GraphState) -> GraphState:
@@ -164,15 +193,36 @@ async def bm25_search_node(state: GraphState) -> GraphState:
 
     Searches the text field with filters applied.
     """
+    query = state.get("expanded_query", "")
+    filters = state.get("filters", {})
+
     logger.info(
         "bm25_search_node",
-        query=state.get("expanded_query"),
-        filters=state.get("filters"),
+        query=query,
+        filters=filters,
     )
 
-    # This will be implemented with actual OpenSearch client
-    # For now, return empty results - actual implementation in search module
-    state["bm25_results"] = []
+    if not query:
+        logger.warning("bm25_search_empty_query")
+        state["bm25_results"] = []
+        return state
+
+    try:
+        searcher = _get_bm25_searcher()
+        # BM25Searcher.search is synchronous, wrap in asyncio.to_thread
+        results = await asyncio.to_thread(
+            searcher.search,
+            query,
+            filters,
+            settings.bm25_top_k,
+        )
+        state["bm25_results"] = results
+        logger.info("bm25_search_complete", result_count=len(results))
+
+    except Exception as e:
+        logger.error("bm25_search_error", error=str(e))
+        state["bm25_results"] = []
+        state["error"] = f"BM25 search failed: {str(e)}"
 
     return state
 
@@ -182,15 +232,30 @@ async def vector_search_node(state: GraphState) -> GraphState:
 
     Generates query embedding and searches with filters.
     """
+    query = state.get("expanded_query", "")
+    filters = state.get("filters", {})
+
     logger.info(
         "vector_search_node",
-        query=state.get("expanded_query"),
-        filters=state.get("filters"),
+        query=query,
+        filters=filters,
     )
 
-    # This will be implemented with actual pgvector client
-    # For now, return empty results - actual implementation in search module
-    state["vector_results"] = []
+    if not query:
+        logger.warning("vector_search_empty_query")
+        state["vector_results"] = []
+        return state
+
+    try:
+        searcher = await _get_vector_searcher()
+        results = await searcher.search(query, filters, settings.vector_top_k)
+        state["vector_results"] = results
+        logger.info("vector_search_complete", result_count=len(results))
+
+    except Exception as e:
+        logger.error("vector_search_error", error=str(e))
+        state["vector_results"] = []
+        state["error"] = f"Vector search failed: {str(e)}"
 
     return state
 
