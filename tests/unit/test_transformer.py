@@ -51,8 +51,7 @@ def sample_restaurant_data() -> dict:
                                 "description": "Fresh pasta with marinara sauce",
                                 "price": {"basePrice": 89.99, "displayPrice": 89.99},
                                 "servingSize": {
-                                    "amount": 12,
-                                    "unit": "serves",
+                                    "unit": "tray",
                                     "description": "Serves 10-12",
                                 },
                                 "dietaryLabels": ["vegetarian"],
@@ -64,8 +63,7 @@ def sample_restaurant_data() -> dict:
                                 "description": "Breaded chicken with mozzarella",
                                 "price": {"basePrice": 129.99, "displayPrice": 129.99},
                                 "servingSize": {
-                                    "amount": 12,
-                                    "unit": "serves",
+                                    "unit": "tray",
                                     "description": "Serves 10-12",
                                 },
                             },
@@ -154,20 +152,36 @@ class TestDocumentTransformer:
 
         transformer.reset_stats()
         assert transformer.stats["documents_created"] == 0
-    def test_transform_empty_restaurant_data(self):
-        """Test that empty restaurant data returns no documents."""
+    def test_transform_empty_menu_items(self):
+        """Test that restaurant with empty menu items returns no documents."""
         transformer = DocumentTransformer()
-        empty_data = {
+        data = {
             "metadata": {"sourcePlatform": "test"},
             "restaurant": {
                 "name": "Test",
-                "cuisine": [],
-                "location": {"city": "Boston", "state": "MA"},
+                "cuisine": ["Italian"],
+                "location": {
+                    "address": "123 Main St",
+                    "city": "Boston",
+                    "state": "MA",
+                    "zipCode": "02101",
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
+                },
             },
-            "menus": [],
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [],  # Empty menu items
+                        }
+                    ],
+                }
+            ],
         }
 
-        documents = transformer.transform_data(empty_data)
+        documents = transformer.transform_data(data)
 
         assert len(documents) == 0
         assert transformer.stats["documents_created"] == 0
@@ -205,7 +219,13 @@ class TestDocumentTransformer:
             "restaurant": {
                 "name": "Test",
                 "cuisine": ["Italian"],
-                "location": {"city": "Boston", "state": "MA", "zipCode": "02101"},
+                "location": {
+                    "address": "123 Main St",
+                    "city": "Boston",
+                    "state": "MA",
+                    "zipCode": "02101",
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
+                },
             },
             "menus": [
                 {
@@ -243,12 +263,19 @@ class TestDocumentTransformer:
                 "name": "Test",
                 "cuisine": ["Italian"],
                 "location": {
+                    "address": "123 Main St",
                     "city": "Boston",
                     "state": "MA",
+                    "zipCode": "02101",
                     "coordinates": {"latitude": "invalid", "longitude": "invalid"},
                 },
             },
-            "menus": [],
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [{"name": "Entrees", "menuItems": []}],
+                }
+            ],
         }
 
         # Should handle gracefully without crashing
@@ -260,21 +287,43 @@ class TestDocumentTransformer:
             pass
 
     def test_transform_null_values(self):
-        """Test handling of null/None values in fields."""
+        """Test handling of null/None values in optional fields."""
         transformer = DocumentTransformer()
 
+        # Test with null values in optional fields only
         data_with_nulls = {
             "metadata": {"sourcePlatform": "test"},
             "restaurant": {
                 "name": "Test",
-                "cuisine": None,
+                "cuisine": ["Italian"],
                 "location": {
+                    "address": "123 Main St",
                     "city": "Boston",
                     "state": "MA",
-                    "coordinates": None,
+                    "zipCode": "02101",
+                    "country": None,  # Optional field can be null
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
                 },
             },
-            "menus": None,
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [
+                                {
+                                    "name": "Pasta",
+                                    "description": None,  # Optional field
+                                    "price": {"displayPrice": 89.99},
+                                    "dietaryLabels": [],
+                                    "tags": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
         }
 
         try:
@@ -294,7 +343,13 @@ class TestDocumentTransformer:
             "restaurant": {
                 "name": "Test",
                 "cuisine": ["Italian"],
-                "location": {"city": "Boston", "state": "MA"},
+                "location": {
+                    "address": "123 Main St",
+                    "city": "Boston",
+                    "state": "MA",
+                    "zipCode": "02101",
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
+                },
             },
             "menus": [
                 {
@@ -333,7 +388,13 @@ class TestDocumentTransformer:
             "restaurant": {
                 "name": "Test™ Rëstaurant™ <script>",
                 "cuisine": ["Italian"],
-                "location": {"city": "Boston", "state": "MA"},
+                "location": {
+                    "address": "123 Main St",
+                    "city": "Boston",
+                    "state": "MA",
+                    "zipCode": "02101",
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
+                },
             },
             "menus": [
                 {

@@ -39,23 +39,23 @@ User Query
     │
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    LangGraph Orchestrator                    │
+│                    LangGraph Orchestrator                   │
 ├─────────────────────────────────────────────────────────────┤
-│  Query Analysis → Determine retrieval strategy               │
-│      │                                                       │
+│  Query Analysis → Determine retrieval strategy              │
+│      │                                                      │
 │      ├── Keyword/semantic query → Hybrid Search (BM25+Vec)  │
-│      ├── Relationship query → Graph Search (Neo4j)           │
+│      ├── Relationship query → Graph Search (Neo4j)          │
 │      └── Both → 3-way RRF Fusion                            │
 ├─────────────────────────────────────────────────────────────┤
-│  Parallel Retrieval:                                         │
+│  Parallel Retrieval:                                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
 │  │ OpenSearch │  │  pgvector  │  │   Neo4j    │             │
 │  │   (BM25)   │  │  (Vector)  │  │  (Graph)   │             │
 │  └────────────┘  └────────────┘  └────────────┘             │
-│         │              │              │                      │
-│         └──────────────┼──────────────┘                      │
-│                        ▼                                     │
-│               RRF Merge (3-way)                              │
+│         │              │              │                     │
+│         └──────────────┼──────────────┘                     │
+│                        ▼                                    │
+│               RRF Merge (3-way)                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 

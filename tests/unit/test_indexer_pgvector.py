@@ -1,275 +1,270 @@
 """Tests for pgvector indexing operations."""
 
-from unittest.mock import AsyncMock, patch
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ingestion.indexer import PgvectorIndexer, ensure_pgvector_table, upsert_embeddings
+from src.ingestion.indexer import PgVectorIndexer, PGVECTOR_SCHEMA
 
 
-class TestEnsurePgvectorTable:
-    """Tests for pgvector table schema creation."""
+class TestPgVectorIndexer:
+    """Tests for PgVectorIndexer class."""
 
-    @pytest.mark.asyncio
-    async def test_ensure_pgvector_table_creates_table(self):
-        """Test that ensure_pgvector_table creates table with correct schema."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    @pytest.fixture
+    def mock_conn(self):
+        """Create a mock asyncpg connection."""
+        conn = AsyncMock()
+        conn.execute = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=0)
+        return conn
 
-            await ensure_pgvector_table()
+    @pytest.fixture
+    def mock_pool(self, mock_conn):
+        """Create a mock asyncpg pool with async context manager support."""
+        pool = AsyncMock()
 
-            # Verify execute was called to create table
-            assert mock_db.execute.called
-            call_args = mock_db.execute.call_args
-            sql = call_args[0][0]
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-            # Verify vector column exists
-            assert "vector" in sql
-            # Verify ivfflat index mentioned
-            assert "ivfflat" in sql.lower() or "index" in sql.lower()
+        pool.acquire = mock_acquire
+        pool.close = AsyncMock()
+        return pool
 
-    @pytest.mark.asyncio
-    async def test_ensure_pgvector_table_includes_metadata_columns(self):
-        """Test that table includes metadata columns from design."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    @pytest.fixture
+    def indexer(self, mock_pool):
+        """Create a PgVectorIndexer with mock pool."""
+        return PgVectorIndexer(pool=mock_pool)
 
-            await ensure_pgvector_table()
 
-            call_args = mock_db.execute.call_args
-            sql = call_args[0][0]
-
-            # Verify metadata columns
-            required_columns = ["doc_id", "restaurant_id", "city", "base_price", "serves_max"]
-            for col in required_columns:
-                assert col in sql.lower()
+class TestCreateSchema:
+    """Tests for pgvector schema creation."""
 
     @pytest.mark.asyncio
-    async def test_ensure_pgvector_table_vector_dimension(self):
-        """Test that table uses correct vector dimension (1536)."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_create_schema(self):
+        """Test that create_schema executes schema SQL."""
+        mock_conn = AsyncMock()
 
-            await ensure_pgvector_table(embedding_dim=1536)
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-            call_args = mock_db.execute.call_args
-            sql = call_args[0][0]
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
 
-            # Verify dimension is set
-            assert "1536" in sql or "vector(" in sql
+        indexer = PgVectorIndexer(pool=mock_pool)
+        await indexer.create_schema()
 
-    @pytest.mark.asyncio
-    async def test_ensure_pgvector_table_creates_indexes(self):
-        """Test that IVFFlat index is created."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+        mock_conn.execute.assert_called_once()
+        call_args = mock_conn.execute.call_args
+        sql = call_args[0][0]
 
-            await ensure_pgvector_table()
+        # Verify key elements of schema
+        assert "vector" in sql
+        assert "menu_embeddings" in sql
 
-            # Should create primary table then indexes
-            assert mock_db.execute.call_count >= 1
+    def test_schema_includes_metadata_columns(self):
+        """Test that schema includes metadata columns."""
+        required_columns = ["doc_id", "restaurant_id", "city", "base_price", "serves_max"]
+        for col in required_columns:
+            assert col in PGVECTOR_SCHEMA.lower()
 
-    @pytest.mark.asyncio
-    async def test_ensure_pgvector_table_error_handling(self):
-        """Test error handling when table creation fails."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_db.execute.side_effect = Exception("Database error")
-            mock_get_db.return_value = mock_db
-
-            with patch("src.ingestion.indexer.logger") as mock_logger:
-                await ensure_pgvector_table()
-
-                # Should log error
-                assert mock_logger.error.called
+    def test_schema_includes_vector_index(self):
+        """Test that schema includes IVFFlat index."""
+        assert "ivfflat" in PGVECTOR_SCHEMA.lower()
 
 
-class TestUpsertEmbeddings:
-    """Tests for embedding upsert operations."""
+class TestIndexDocuments:
+    """Tests for document indexing with embeddings."""
+
+    @pytest.fixture
+    def mock_documents(self):
+        """Sample documents for indexing."""
+        doc1 = MagicMock()
+        doc1.doc_id = "doc-1"
+        doc1.restaurant_id = "rest-1"
+        doc1.city = "Boston"
+        doc1.base_price = 89.99
+        doc1.serves_max = 12
+        doc1.dietary_labels = ["gluten-free"]
+
+        doc2 = MagicMock()
+        doc2.doc_id = "doc-2"
+        doc2.restaurant_id = "rest-2"
+        doc2.city = "Cambridge"
+        doc2.base_price = 79.99
+        doc2.serves_max = 10
+        doc2.dietary_labels = ["vegetarian"]
+
+        return [doc1, doc2]
 
     @pytest.fixture
     def mock_embeddings(self):
         """Sample embeddings."""
-        return [
-            {
-                "doc_id": "doc-1",
-                "embedding": [0.1] * 1536,
-                "restaurant_id": "rest-1",
-                "city": "Boston",
-                "base_price": 89.99,
-                "serves_max": 12,
-                "dietary_labels": ["gluten-free"],
-            },
-            {
-                "doc_id": "doc-2",
-                "embedding": [0.2] * 1536,
-                "restaurant_id": "rest-2",
-                "city": "Cambridge",
-                "base_price": 79.99,
-                "serves_max": 10,
-                "dietary_labels": ["vegetarian"],
-            },
-        ]
+        return {
+            "doc-1": [0.1] * 1536,
+            "doc-2": [0.2] * 1536,
+        }
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_happy_path(self, mock_embeddings):
-        """Test successful embedding upsert."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_index_documents_happy_path(self, mock_documents, mock_embeddings):
+        """Test successful embedding indexing."""
+        mock_conn = AsyncMock()
 
-            await upsert_embeddings(mock_embeddings)
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-            # Verify execute was called with upsert query
-            assert mock_db.execute.called
-            call_args = mock_db.execute.call_args
-            sql = call_args[0][0]
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
 
-            # Verify ON CONFLICT for idempotency
-            assert "on conflict" in sql.lower() or "upsert" in str(call_args).lower()
+        indexer = PgVectorIndexer(pool=mock_pool)
+        result = await indexer.index_documents(mock_documents, mock_embeddings)
 
-    @pytest.mark.asyncio
-    async def test_upsert_embeddings_empty_input(self):
-        """Test that empty list returns early."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
-
-            await upsert_embeddings([])
-
-            # Should not attempt to execute
-            mock_db.execute.assert_not_called()
+        assert result["success"] == 2
+        assert result["failed"] == 0
+        assert mock_conn.execute.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_idempotency(self, mock_embeddings):
-        """Test that upserting same embedding twice is idempotent."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_index_documents_empty_input(self):
+        """Test that empty document list returns early."""
+        mock_pool = AsyncMock()
 
-            # First upsert
-            await upsert_embeddings(mock_embeddings[:1])
-            first_call_count = mock_db.execute.call_count
+        indexer = PgVectorIndexer(pool=mock_pool)
+        result = await indexer.index_documents([], {})
 
-            # Reset mock
-            mock_db.reset_mock()
-
-            # Second upsert same data
-            await upsert_embeddings(mock_embeddings[:1])
-
-            # Should use ON CONFLICT DO UPDATE (same behavior)
-            assert mock_db.execute.called
+        assert result["success"] == 0
+        assert result["failed"] == 0
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_batching(self):
-        """Test that large embedding lists are batched."""
-        large_embeddings = [
-            {
-                "doc_id": f"doc-{i}",
-                "embedding": [0.1 * (i % 10)] * 1536,
-                "restaurant_id": f"rest-{i % 5}",
-                "city": "Boston",
-                "base_price": 50.0 + i,
-                "serves_max": 10 + i,
-                "dietary_labels": [],
-            }
-            for i in range(150)
-        ]
+    async def test_index_documents_missing_embedding(self, mock_documents):
+        """Test handling of documents with missing embeddings."""
+        mock_conn = AsyncMock()
 
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-            await upsert_embeddings(large_embeddings, batch_size=100)
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
 
-            # Should batch-insert to avoid overloading
-            assert mock_db.execute.call_count >= 1
+        # Only provide embedding for first document
+        partial_embeddings = {
+            "doc-1": [0.1] * 1536,
+        }
+
+        indexer = PgVectorIndexer(pool=mock_pool)
+        result = await indexer.index_documents(mock_documents, partial_embeddings)
+
+        assert result["success"] == 1
+        assert result["missing_embeddings"] == 1
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_missing_fields(self):
-        """Test handling of documents missing required embedding field."""
-        bad_embeddings = [
-            {
-                "doc_id": "doc-1",
-                # Missing embedding field
-                "restaurant_id": "rest-1",
-                "city": "Boston",
-            }
-        ]
+    async def test_index_documents_uses_upsert(self, mock_documents, mock_embeddings):
+        """Test that indexing uses ON CONFLICT for idempotency."""
+        mock_conn = AsyncMock()
 
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-            with patch("src.ingestion.indexer.logger") as mock_logger:
-                await upsert_embeddings(bad_embeddings)
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
 
-                # Should log warning or skip bad record
-                if mock_db.execute.called:
-                    # If it tried to execute, embedding validation failed
-                    pass
+        indexer = PgVectorIndexer(pool=mock_pool)
+        await indexer.index_documents(mock_documents, mock_embeddings)
+
+        # Check that SQL includes ON CONFLICT
+        call_args = mock_conn.execute.call_args_list[0]
+        sql = call_args[0][0]
+        assert "on conflict" in sql.lower()
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_database_error(self, mock_embeddings):
-        """Test error handling when database operation fails."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_db.execute.side_effect = Exception("Connection timeout")
-            mock_get_db.return_value = mock_db
+    async def test_index_documents_database_error(self, mock_documents, mock_embeddings):
+        """Test handling of database errors."""
+        mock_conn = AsyncMock()
+        mock_conn.execute.side_effect = Exception("Connection failed")
 
-            with patch("src.ingestion.indexer.logger") as mock_logger:
-                await upsert_embeddings(mock_embeddings)
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
 
-                # Should log error
-                assert mock_logger.error.called
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        indexer = PgVectorIndexer(pool=mock_pool)
+        result = await indexer.index_documents(mock_documents, mock_embeddings)
+
+        assert result["failed"] == 2
 
 
-class TestPgvectorIndexer:
-    """Tests for PgvectorIndexer class."""
-
-    @pytest.fixture
-    async def indexer(self):
-        """Create a PgvectorIndexer instance."""
-        return PgvectorIndexer()
-
-    @pytest.mark.asyncio
-    async def test_indexer_initialization(self):
-        """Test that indexer is initialized."""
-        indexer = PgvectorIndexer()
-        assert indexer is not None
+class TestConnection:
+    """Tests for connection management."""
 
     @pytest.mark.asyncio
-    async def test_indexer_ensure_table(self):
-        """Test indexer ensure_table method."""
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_connect_creates_pool(self):
+        """Test that connect creates a connection pool."""
+        mock_pool = AsyncMock()
 
-            indexer = PgvectorIndexer()
-            await indexer.ensure_table()
+        async def mock_create_pool_fn(*args, **kwargs):
+            return mock_pool
 
-            mock_db.execute.assert_called_once()
+        with patch("src.ingestion.indexer.asyncpg.create_pool", mock_create_pool_fn):
+            indexer = PgVectorIndexer()
+            await indexer.connect()
+
+            assert indexer.pool == mock_pool
 
     @pytest.mark.asyncio
-    async def test_indexer_index_embeddings(self):
-        """Test indexer index_embeddings method."""
-        embeddings = [
-            {
-                "doc_id": "doc-1",
-                "embedding": [0.1] * 1536,
-                "restaurant_id": "rest-1",
-            }
-        ]
+    async def test_close_closes_pool(self):
+        """Test that close releases the connection pool."""
+        mock_pool = AsyncMock()
 
-        with patch("src.ingestion.indexer.get_async_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+        indexer = PgVectorIndexer(pool=mock_pool)
+        await indexer.close()
 
-            indexer = PgvectorIndexer()
-            await indexer.index_embeddings(embeddings)
+        mock_pool.close.assert_called_once()
+        assert indexer.pool is None
 
-            mock_db.execute.assert_called_once()
+
+class TestUtilities:
+    """Tests for utility methods."""
+
+    @pytest.mark.asyncio
+    async def test_get_document_count(self):
+        """Test getting document count."""
+        mock_conn = AsyncMock()
+        mock_conn.fetchval.return_value = 42
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        indexer = PgVectorIndexer(pool=mock_pool)
+        count = await indexer.get_document_count()
+
+        assert count == 42
+
+    @pytest.mark.asyncio
+    async def test_delete_all(self):
+        """Test deleting all embeddings."""
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        indexer = PgVectorIndexer(pool=mock_pool)
+        await indexer.delete_all()
+
+        mock_conn.execute.assert_called_once()
+        call_args = mock_conn.execute.call_args
+        sql = call_args[0][0]
+        assert "truncate" in sql.lower()

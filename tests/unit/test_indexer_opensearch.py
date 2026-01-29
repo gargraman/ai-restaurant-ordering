@@ -1,234 +1,235 @@
 """Tests for OpenSearch indexing operations."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ingestion.indexer import OpenSearchIndexer, ensure_opensearch_index, bulk_index_documents
-
-
-class TestEnsureOpenSearchIndex:
-    """Tests for index creation and mapping."""
-
-    @pytest.mark.asyncio
-    async def test_ensure_opensearch_index_creates_mapping(self):
-        """Test that ensure_opensearch_index creates index with correct mapping."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = False
-            mock_client.indices.create.return_value = {"acknowledged": True}
-
-            await ensure_opensearch_index()
-
-            # Verify index creation was called
-            mock_client.indices.create.assert_called_once()
-            call_args = mock_client.indices.create.call_args
-
-            # Verify mapping includes text field with english analyzer
-            assert "mappings" in call_args[1]
-            mappings = call_args[1]["mappings"]
-            assert "text" in mappings["properties"]
-            assert mappings["properties"]["text"].get("analyzer") == "english"
-
-    @pytest.mark.asyncio
-    async def test_ensure_opensearch_index_skips_if_exists(self):
-        """Test that index creation is skipped if index already exists."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = True
-
-            await ensure_opensearch_index()
-
-            # Should not attempt to create
-            mock_client.indices.create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_ensure_opensearch_index_includes_keyword_fields(self):
-        """Test that mapping includes keyword fields for faceting."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = False
-            mock_client.indices.create.return_value = {"acknowledged": True}
-
-            await ensure_opensearch_index()
-
-            call_args = mock_client.indices.create.call_args
-            mappings = call_args[1]["mappings"]["properties"]
-
-            # Verify keyword fields exist
-            keyword_fields = ["restaurant_id", "city", "state", "cuisine", "dietary_labels"]
-            for field in keyword_fields:
-                assert field in mappings
-
-    @pytest.mark.asyncio
-    async def test_ensure_opensearch_index_includes_geo_point(self):
-        """Test that mapping includes geo_point for location."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = False
-            mock_client.indices.create.return_value = {"acknowledged": True}
-
-            await ensure_opensearch_index()
-
-            call_args = mock_client.indices.create.call_args
-            mappings = call_args[1]["mappings"]["properties"]
-
-            assert "coordinates" in mappings
-            assert mappings["coordinates"]["type"] == "geo_point"
-
-    @pytest.mark.asyncio
-    async def test_ensure_opensearch_index_error_handling(self):
-        """Test error handling when index creation fails."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = False
-            mock_client.indices.create.side_effect = Exception("Connection failed")
-
-            with pytest.raises(Exception):
-                await ensure_opensearch_index()
-
-
-class TestBulkIndexDocuments:
-    """Tests for bulk document indexing."""
-
-    @pytest.fixture
-    def mock_documents(self):
-        """Sample documents for indexing."""
-        return [
-            {
-                "doc_id": "doc-1",
-                "item_name": "Pasta Tray",
-                "restaurant_name": "Italian Kitchen",
-                "city": "Boston",
-                "display_price": 89.99,
-                "text": "Pasta Tray. Breaded chicken with marinara sauce.",
-            },
-            {
-                "doc_id": "doc-2",
-                "item_name": "Salad Platter",
-                "restaurant_name": "Fresh Greens",
-                "city": "Boston",
-                "display_price": 59.99,
-                "text": "Mixed green salad with seasonal vegetables.",
-            },
-        ]
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_happy_path(self, mock_documents):
-        """Test successful bulk indexing of documents."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.bulk.return_value = {"errors": False}
-
-            await bulk_index_documents(mock_documents)
-
-            # Verify bulk operation was called
-            mock_client.bulk.assert_called_once()
-            call_args = mock_client.bulk.call_args
-
-            # Verify documents are in bulk operation
-            bulk_body = call_args[1]["body"]
-            assert len(bulk_body) > 0
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_empty_input(self):
-        """Test that empty document list returns early."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            await bulk_index_documents([])
-
-            # Should not attempt bulk operation
-            mock_client.bulk.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_uses_doc_id(self, mock_documents):
-        """Test that documents are indexed with their doc_id as _id."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.bulk.return_value = {"errors": False}
-
-            await bulk_index_documents(mock_documents)
-
-            call_args = mock_client.bulk.call_args
-            bulk_body = call_args[1]["body"]
-
-            # Verify index operations include doc_id
-            # Bulk format: [{"index": {"_id": "doc-1"}}, {document}]
-            assert "doc-1" in str(bulk_body) or any("doc-1" in str(item) for item in bulk_body)
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_batching(self, mock_documents):
-        """Test that large document lists are batched."""
-        # Create 150 documents to exceed typical batch size of 100
-        large_docs = mock_documents * 75
-
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.bulk.return_value = {"errors": False}
-
-            await bulk_index_documents(large_docs, batch_size=100)
-
-            # Should call bulk multiple times (2 batches for 150 docs)
-            assert mock_client.bulk.call_count >= 1
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_error_handling(self, mock_documents):
-        """Test error handling for bulk indexing failures."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.bulk.side_effect = Exception("OpenSearch unavailable")
-
-            with patch("src.ingestion.indexer.logger") as mock_logger:
-                await bulk_index_documents(mock_documents)
-
-                # Should log error but not raise
-                assert mock_logger.error.called
-
-    @pytest.mark.asyncio
-    async def test_bulk_index_documents_partial_errors(self, mock_documents):
-        """Test handling of partial errors in bulk operation."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            # Simulate bulk response with some errors
-            mock_client.bulk.return_value = {
-                "errors": True,
-                "items": [
-                    {"index": {"_id": "doc-1", "status": 201}},
-                    {"index": {"_id": "doc-2", "status": 400, "error": "Bad request"}},
-                ],
-            }
-
-            with patch("src.ingestion.indexer.logger") as mock_logger:
-                await bulk_index_documents(mock_documents)
-
-                # Should log warning about partial errors
-                assert mock_logger.warning.called or mock_logger.error.called
+from src.ingestion.indexer import OpenSearchIndexer, OPENSEARCH_MAPPING
 
 
 class TestOpenSearchIndexer:
     """Tests for OpenSearchIndexer class."""
 
     @pytest.fixture
-    def indexer(self):
-        """Create an OpenSearchIndexer instance."""
-        return OpenSearchIndexer()
+    def mock_client(self):
+        """Create a mock OpenSearch client."""
+        return MagicMock()
 
-    @pytest.mark.asyncio
-    async def test_indexer_initialization(self, indexer):
-        """Test that indexer is initialized correctly."""
-        assert indexer is not None
+    @pytest.fixture
+    def indexer(self, mock_client):
+        """Create an OpenSearchIndexer with mock client."""
+        return OpenSearchIndexer(client=mock_client)
 
-    @pytest.mark.asyncio
-    async def test_indexer_ensure_index(self, indexer):
-        """Test indexer ensure_index method."""
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.indices.exists.return_value = True
+    @pytest.fixture
+    def mock_documents(self):
+        """Sample documents for indexing."""
+        doc1 = MagicMock()
+        doc1.doc_id = "doc-1"
+        doc1.to_opensearch_doc.return_value = {
+            "doc_id": "doc-1",
+            "item_name": "Pasta Tray",
+            "restaurant_name": "Italian Kitchen",
+            "city": "Boston",
+            "display_price": 89.99,
+            "text": "Pasta Tray. Breaded chicken with marinara sauce.",
+        }
 
-            await indexer.ensure_index()
+        doc2 = MagicMock()
+        doc2.doc_id = "doc-2"
+        doc2.to_opensearch_doc.return_value = {
+            "doc_id": "doc-2",
+            "item_name": "Salad Platter",
+            "restaurant_name": "Fresh Greens",
+            "city": "Boston",
+            "display_price": 59.99,
+            "text": "Mixed green salad with seasonal vegetables.",
+        }
 
-            # Should check if index exists
-            mock_client.indices.exists.assert_called_once()
+        return [doc1, doc2]
 
-    @pytest.mark.asyncio
-    async def test_indexer_index_documents(self, indexer):
-        """Test indexer index_documents method."""
-        docs = [
-            {"doc_id": "doc-1", "text": "Test document"},
-            {"doc_id": "doc-2", "text": "Another test"},
-        ]
 
-        with patch("src.ingestion.indexer.opensearch_client") as mock_client:
-            mock_client.bulk.return_value = {"errors": False}
+class TestCreateIndex:
+    """Tests for index creation."""
 
-            await indexer.index_documents(docs)
+    def test_create_index_new(self):
+        """Test creating a new index."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = False
+        mock_client.indices.create.return_value = {"acknowledged": True}
 
-            mock_client.bulk.assert_called_once()
+        indexer = OpenSearchIndexer(client=mock_client)
+        indexer.create_index()
+
+        mock_client.indices.exists.assert_called_once()
+        mock_client.indices.create.assert_called_once()
+
+    def test_create_index_already_exists(self):
+        """Test that index creation is skipped if index exists."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = True
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        indexer.create_index()
+
+        mock_client.indices.exists.assert_called_once()
+        mock_client.indices.create.assert_not_called()
+
+    def test_create_index_delete_existing(self):
+        """Test that existing index is deleted when delete_existing=True."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = True
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        indexer.create_index(delete_existing=True)
+
+        mock_client.indices.delete.assert_called_once()
+        mock_client.indices.create.assert_called_once()
+
+    def test_mapping_includes_text_field_with_english_analyzer(self):
+        """Test that mapping includes text field with english analyzer."""
+        assert "text" in OPENSEARCH_MAPPING["mappings"]["properties"]
+        text_mapping = OPENSEARCH_MAPPING["mappings"]["properties"]["text"]
+        assert text_mapping.get("analyzer") == "english"
+
+    def test_mapping_includes_keyword_fields(self):
+        """Test that mapping includes keyword fields for faceting."""
+        mappings = OPENSEARCH_MAPPING["mappings"]["properties"]
+        keyword_fields = ["restaurant_id", "city", "state", "cuisine", "dietary_labels"]
+        for field in keyword_fields:
+            assert field in mappings
+
+    def test_mapping_includes_geo_point(self):
+        """Test that mapping includes geo_point for location."""
+        mappings = OPENSEARCH_MAPPING["mappings"]["properties"]
+        assert "coordinates" in mappings
+        assert mappings["coordinates"]["type"] == "geo_point"
+
+
+class TestIndexDocuments:
+    """Tests for document indexing."""
+
+    @pytest.fixture
+    def mock_documents(self):
+        """Sample documents for indexing."""
+        doc1 = MagicMock()
+        doc1.doc_id = "doc-1"
+        doc1.to_opensearch_doc.return_value = {
+            "doc_id": "doc-1",
+            "item_name": "Pasta Tray",
+            "text": "Pasta Tray.",
+        }
+
+        doc2 = MagicMock()
+        doc2.doc_id = "doc-2"
+        doc2.to_opensearch_doc.return_value = {
+            "doc_id": "doc-2",
+            "item_name": "Salad Platter",
+            "text": "Salad Platter.",
+        }
+
+        return [doc1, doc2]
+
+    def test_index_documents_happy_path(self, mock_documents):
+        """Test successful document indexing."""
+        mock_client = MagicMock()
+
+        with patch("src.ingestion.indexer.helpers") as mock_helpers:
+            mock_helpers.bulk.return_value = (2, [])
+
+            indexer = OpenSearchIndexer(client=mock_client)
+            result = indexer.index_documents(mock_documents)
+
+            mock_helpers.bulk.assert_called_once()
+            assert result["success"] == 2
+            assert result["failed"] == []
+
+    def test_index_documents_empty_input(self):
+        """Test that empty document list returns early."""
+        mock_client = MagicMock()
+
+        with patch("src.ingestion.indexer.helpers") as mock_helpers:
+            indexer = OpenSearchIndexer(client=mock_client)
+            result = indexer.index_documents([])
+
+            mock_helpers.bulk.assert_not_called()
+            assert result["success"] == 0
+            assert result["failed"] == []
+
+    def test_index_documents_uses_doc_id(self, mock_documents):
+        """Test that documents are indexed with their doc_id as _id."""
+        mock_client = MagicMock()
+
+        with patch("src.ingestion.indexer.helpers") as mock_helpers:
+            mock_helpers.bulk.return_value = (2, [])
+
+            indexer = OpenSearchIndexer(client=mock_client)
+            indexer.index_documents(mock_documents)
+
+            call_args = mock_helpers.bulk.call_args
+            actions = call_args[1]["actions"] if "actions" in call_args[1] else call_args[0][1]
+
+            # Verify actions include doc_ids
+            actions_list = list(actions)
+            assert any(a["_id"] == "doc-1" for a in actions_list)
+            assert any(a["_id"] == "doc-2" for a in actions_list)
+
+    def test_index_documents_partial_failure(self, mock_documents):
+        """Test handling of partial errors in bulk operation."""
+        mock_client = MagicMock()
+
+        with patch("src.ingestion.indexer.helpers") as mock_helpers:
+            failed_items = [
+                {"index": {"_id": "doc-2", "status": 400, "error": {"reason": "Bad request"}}}
+            ]
+            mock_helpers.bulk.return_value = (1, failed_items)
+
+            indexer = OpenSearchIndexer(client=mock_client)
+            result = indexer.index_documents(mock_documents)
+
+            assert result["success"] == 1
+            assert len(result["failed"]) == 1
+
+
+class TestIndexerUtilities:
+    """Tests for indexer utility methods."""
+
+    def test_delete_index(self):
+        """Test deleting an index."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = True
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        indexer.delete_index()
+
+        mock_client.indices.delete.assert_called_once()
+
+    def test_delete_index_not_exists(self):
+        """Test deleting non-existent index is a no-op."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = False
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        indexer.delete_index()
+
+        mock_client.indices.delete.assert_not_called()
+
+    def test_get_document_count(self):
+        """Test getting document count."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = True
+        mock_client.count.return_value = {"count": 42}
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        count = indexer.get_document_count()
+
+        assert count == 42
+
+    def test_get_document_count_no_index(self):
+        """Test getting document count when index doesn't exist."""
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = False
+
+        indexer = OpenSearchIndexer(client=mock_client)
+        count = indexer.get_document_count()
+
+        assert count == 0

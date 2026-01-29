@@ -1,32 +1,32 @@
-"""Tests for embeddings generation and indexing."""
+"""Tests for embeddings generation."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ingestion.embeddings import batch_generate_embeddings, upsert_embeddings_pgvector
+from src.ingestion.embeddings import EmbeddingGenerator, get_embedding_generator
 
 
-class TestBatchGenerateEmbeddings:
-    """Tests for batch embedding generation via OpenAI."""
+class TestEmbeddingGenerator:
+    """Tests for EmbeddingGenerator class."""
 
     @pytest.fixture
     def mock_documents(self):
         """Sample documents for embedding."""
-        return [
-            {
-                "doc_id": "doc-1",
-                "text": "Chicken Parmesan. Breaded chicken with marinara sauce.",
-            },
-            {
-                "doc_id": "doc-2",
-                "text": "Vegetarian pasta primavera. Fresh vegetables and olive oil.",
-            },
-            {
-                "doc_id": "doc-3",
-                "text": "Caesar salad with croutons and parmesan cheese.",
-            },
-        ]
+        # Create mock IndexDocument objects
+        doc1 = MagicMock()
+        doc1.doc_id = "doc-1"
+        doc1.text = "Chicken Parmesan. Breaded chicken with marinara sauce."
+
+        doc2 = MagicMock()
+        doc2.doc_id = "doc-2"
+        doc2.text = "Vegetarian pasta primavera. Fresh vegetables and olive oil."
+
+        doc3 = MagicMock()
+        doc3.doc_id = "doc-3"
+        doc3.text = "Caesar salad with croutons and parmesan cheese."
+
+        return [doc1, doc2, doc3]
 
     @pytest.fixture
     def mock_embeddings(self):
@@ -38,171 +38,178 @@ class TestBatchGenerateEmbeddings:
         ]
 
     @pytest.mark.asyncio
-    async def test_batch_generate_embeddings_happy_path(self, mock_documents, mock_embeddings):
+    async def test_generate_embeddings_batch_happy_path(self, mock_embeddings):
         """Test successful batch embedding generation."""
-        with patch("src.ingestion.embeddings.get_embedding") as mock_get_embedding:
-            mock_get_embedding.side_effect = mock_embeddings
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(index=0, embedding=mock_embeddings[0]),
+            MagicMock(index=1, embedding=mock_embeddings[1]),
+            MagicMock(index=2, embedding=mock_embeddings[2]),
+        ]
+        mock_client.embeddings.create.return_value = mock_response
 
-            result = await batch_generate_embeddings(mock_documents, batch_size=2)
+        generator = EmbeddingGenerator(client=mock_client)
+        result = await generator.generate_embeddings_batch(
+            ["text1", "text2", "text3"]
+        )
 
-            assert len(result) == 3
-            assert all(len(emb) == 1536 for emb in result)
-            assert mock_get_embedding.call_count == 3
+        assert len(result) == 3
+        assert all(len(emb) == 1536 for emb in result)
+        mock_client.embeddings.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_batch_generate_embeddings_empty_input(self):
-        """Test that empty document list returns empty embeddings."""
-        result = await batch_generate_embeddings([], batch_size=2)
+    async def test_generate_embeddings_batch_empty_input(self):
+        """Test that empty text list returns empty embeddings."""
+        mock_client = AsyncMock()
+        generator = EmbeddingGenerator(client=mock_client)
+
+        result = await generator.generate_embeddings_batch([])
 
         assert result == []
+        mock_client.embeddings.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_batch_generate_embeddings_with_retries(self, mock_documents):
-        """Test that retries are attempted on transient failures."""
-        with patch("src.ingestion.embeddings.get_embedding") as mock_get_embedding:
-            # Simulate transient failure followed by success
-            mock_embedding = [0.1] * 1536
-            mock_get_embedding.side_effect = [
-                Exception("Rate limit exceeded"),
-                mock_embedding,
-                mock_embedding,
-                mock_embedding,
-            ]
-
-            # With tenacity retry decorator, should eventually succeed
-            # (actual retry logic depends on decorator configuration)
-            try:
-                await batch_generate_embeddings(mock_documents[:1], batch_size=1)
-            except Exception:
-                # If retries exhausted, that's acceptable for this test
-                pass
-
-    @pytest.mark.asyncio
-    async def test_batch_generate_embeddings_preserves_order(self, mock_documents, mock_embeddings):
-        """Test that embeddings order matches input document order."""
-        with patch("src.ingestion.embeddings.get_embedding") as mock_get_embedding:
-            mock_get_embedding.side_effect = mock_embeddings
-
-            result = await batch_generate_embeddings(mock_documents, batch_size=2)
-
-            # Verify order is preserved (doc-1 → embedding[0], etc.)
-            assert len(result) == len(mock_documents)
-
-    @pytest.mark.asyncio
-    async def test_batch_generate_embeddings_batch_size(self, mock_documents, mock_embeddings):
-        """Test that batch size is respected."""
-        with patch("src.ingestion.embeddings.get_embedding") as mock_get_embedding:
-            mock_get_embedding.side_effect = mock_embeddings * 10  # Enough for multiple batches
-
-            await batch_generate_embeddings(mock_documents, batch_size=2)
-
-            # Batch size=2 should process in 2 batches of 2, then 1 batch of 1
-            # Exact call count depends on implementation
-
-
-class TestUpsertEmbeddingsPgvector:
-    """Tests for upserting embeddings to pgvector."""
-
-    @pytest.fixture
-    def mock_docs_with_embeddings(self):
-        """Documents with embeddings."""
-        return [
-            {
-                "doc_id": "doc-1",
-                "embedding": [0.1] * 1536,
-                "restaurant_id": "rest-1",
-                "city": "Boston",
-                "base_price": 89.99,
-                "serves_max": 12,
-                "dietary_labels": ["gluten-free"],
-            },
-            {
-                "doc_id": "doc-2",
-                "embedding": [0.2] * 1536,
-                "restaurant_id": "rest-1",
-                "city": "Boston",
-                "base_price": 79.99,
-                "serves_max": 10,
-                "dietary_labels": ["vegetarian"],
-            },
+    async def test_generate_document_embeddings_happy_path(self, mock_documents, mock_embeddings):
+        """Test successful document embedding generation."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(index=0, embedding=mock_embeddings[0]),
+            MagicMock(index=1, embedding=mock_embeddings[1]),
+            MagicMock(index=2, embedding=mock_embeddings[2]),
         ]
+        mock_client.embeddings.create.return_value = mock_response
+
+        generator = EmbeddingGenerator(client=mock_client, batch_size=10)
+        result = await generator.generate_document_embeddings(mock_documents)
+
+        assert len(result) == 3
+        assert "doc-1" in result
+        assert "doc-2" in result
+        assert "doc-3" in result
+        assert all(len(emb) == 1536 for emb in result.values())
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_pgvector_happy_path(self, mock_docs_with_embeddings):
-        """Test successful embedding upsert to pgvector."""
-        with patch("src.ingestion.embeddings.get_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_generate_document_embeddings_empty_input(self):
+        """Test that empty document list returns empty dict."""
+        mock_client = AsyncMock()
+        generator = EmbeddingGenerator(client=mock_client)
 
-            await upsert_embeddings_pgvector(mock_docs_with_embeddings)
+        result = await generator.generate_document_embeddings([])
 
-            # Verify execute was called with upsert query
-            assert mock_db.execute.called
+        assert result == {}
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_pgvector_empty_input(self):
-        """Test that empty input returns early without errors."""
-        with patch("src.ingestion.embeddings.get_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+    async def test_generate_document_embeddings_batching(self, mock_embeddings):
+        """Test that documents are processed in batches."""
+        # Create 5 mock documents
+        mock_docs = []
+        for i in range(5):
+            doc = MagicMock()
+            doc.doc_id = f"doc-{i}"
+            doc.text = f"Text {i}"
+            mock_docs.append(doc)
 
-            await upsert_embeddings_pgvector([])
-
-            # Should not attempt any database operations
-            assert not mock_db.execute.called
-
-    @pytest.mark.asyncio
-    async def test_upsert_embeddings_pgvector_idempotency(self, mock_docs_with_embeddings):
-        """Test that upserting same doc twice results in single record."""
-        with patch("src.ingestion.embeddings.get_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
-
-            # Upsert first time
-            await upsert_embeddings_pgvector(mock_docs_with_embeddings[:1])
-            first_call_count = mock_db.execute.call_count
-
-            # Reset mock
-            mock_db.reset_mock()
-
-            # Upsert same doc again - should use ON CONFLICT DO UPDATE
-            await upsert_embeddings_pgvector(mock_docs_with_embeddings[:1])
-
-            # Should execute same upsert logic (idempotent)
-            assert mock_db.execute.called
-
-    @pytest.mark.asyncio
-    async def test_upsert_embeddings_pgvector_with_missing_embedding(self):
-        """Test warning/error when document missing embedding field."""
-        docs = [
-            {
-                "doc_id": "doc-1",
-                # Missing embedding field
-                "restaurant_id": "rest-1",
-                "city": "Boston",
-            }
+        mock_client = AsyncMock()
+        # Set up responses for multiple batch calls
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(index=0, embedding=mock_embeddings[0]),
+            MagicMock(index=1, embedding=mock_embeddings[1]),
         ]
+        mock_client.embeddings.create.return_value = mock_response
 
-        with patch("src.ingestion.embeddings.get_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_get_db.return_value = mock_db
+        generator = EmbeddingGenerator(client=mock_client, batch_size=2)
+        result = await generator.generate_document_embeddings(mock_docs)
 
-            with patch("src.ingestion.embeddings.logger") as mock_logger:
-                await upsert_embeddings_pgvector(docs)
-
-                # Should log warning for missing embedding
-                assert mock_logger.warning.called or mock_logger.error.called
+        # With batch_size=2 and 5 docs, should make 3 API calls
+        assert mock_client.embeddings.create.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_upsert_embeddings_pgvector_db_error_handling(self, mock_docs_with_embeddings):
-        """Test that database errors are logged and handled gracefully."""
-        with patch("src.ingestion.embeddings.get_db") as mock_get_db:
-            mock_db = AsyncMock()
-            mock_db.execute.side_effect = Exception("Connection failed")
-            mock_get_db.return_value = mock_db
+    async def test_generate_embedding_single_text(self, mock_embeddings):
+        """Test generating embedding for a single text."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=mock_embeddings[0])]
+        mock_client.embeddings.create.return_value = mock_response
 
-            with patch("src.ingestion.embeddings.logger") as mock_logger:
-                await upsert_embeddings_pgvector(mock_docs_with_embeddings)
+        generator = EmbeddingGenerator(client=mock_client)
+        result = await generator.generate_embedding("Test text")
 
-                # Should log error
-                assert mock_logger.error.called
+        assert len(result) == 1536
+        mock_client.embeddings.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generate_query_embedding(self, mock_embeddings):
+        """Test generating embedding for a search query."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=mock_embeddings[0])]
+        mock_client.embeddings.create.return_value = mock_response
+
+        generator = EmbeddingGenerator(client=mock_client)
+        result = await generator.generate_query_embedding("Italian food in Boston")
+
+        assert len(result) == 1536
+        mock_client.embeddings.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_batch_size_respected(self):
+        """Test that batch size limit is enforced."""
+        mock_client = AsyncMock()
+        generator = EmbeddingGenerator(client=mock_client, batch_size=100)
+
+        # Try to exceed OpenAI's max batch size
+        large_texts = ["text"] * 3000
+
+        with pytest.raises(ValueError, match="exceeds OpenAI limit"):
+            await generator.generate_embeddings_batch(large_texts)
+
+    @pytest.mark.asyncio
+    async def test_preserves_document_order(self, mock_documents, mock_embeddings):
+        """Test that embeddings order matches document order."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        # Return embeddings in shuffled order (by index)
+        mock_response.data = [
+            MagicMock(index=2, embedding=mock_embeddings[2]),
+            MagicMock(index=0, embedding=mock_embeddings[0]),
+            MagicMock(index=1, embedding=mock_embeddings[1]),
+        ]
+        mock_client.embeddings.create.return_value = mock_response
+
+        generator = EmbeddingGenerator(client=mock_client, batch_size=10)
+        result = await generator.generate_document_embeddings(mock_documents)
+
+        # Should reorder by index to match input order
+        assert result["doc-1"] == mock_embeddings[0]
+        assert result["doc-2"] == mock_embeddings[1]
+        assert result["doc-3"] == mock_embeddings[2]
+
+
+class TestGetEmbeddingGenerator:
+    """Tests for get_embedding_generator factory function."""
+
+    def test_creates_generator_with_defaults(self):
+        """Test factory creates generator with default settings."""
+        with patch("src.ingestion.embeddings.get_settings") as mock_settings:
+            mock_settings.return_value.openai_api_key = "test-key"
+            mock_settings.return_value.openai_embedding_model = "text-embedding-3-small"
+            mock_settings.return_value.embedding_dimensions = 1536
+
+            generator = get_embedding_generator()
+
+            assert generator is not None
+            assert generator._batch_size == 1000
+
+    def test_creates_generator_with_custom_batch_size(self):
+        """Test factory creates generator with custom batch size."""
+        with patch("src.ingestion.embeddings.get_settings") as mock_settings:
+            mock_settings.return_value.openai_api_key = "test-key"
+            mock_settings.return_value.openai_embedding_model = "text-embedding-3-small"
+            mock_settings.return_value.embedding_dimensions = 1536
+
+            generator = get_embedding_generator(batch_size=500)
+
+            assert generator._batch_size == 500

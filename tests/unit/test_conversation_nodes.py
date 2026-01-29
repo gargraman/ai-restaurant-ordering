@@ -40,6 +40,7 @@ def _base_state(**overrides) -> dict:
         "candidate_doc_ids": [],
         "bm25_results": [],
         "vector_results": [],
+        "graph_results": [],
         "merged_results": [],
         "final_context": [],
         "answer": "",
@@ -740,6 +741,7 @@ class TestContextSelectorNode:
         with patch("src.langgraph.nodes.settings") as mock_settings:
             mock_settings.max_context_items = 8
             mock_settings.max_per_restaurant = 3
+            mock_settings.max_context_tokens = 4000
 
             state = _base_state(merged_results=docs)
             result = await context_selector_node(state)
@@ -759,6 +761,7 @@ class TestContextSelectorNode:
         with patch("src.langgraph.nodes.settings") as mock_settings:
             mock_settings.max_context_items = 8
             mock_settings.max_per_restaurant = 3
+            mock_settings.max_context_tokens = 4000
 
             state = _base_state(merged_results=docs)
             result = await context_selector_node(state)
@@ -1049,70 +1052,77 @@ class TestGraphSearchNode:
         assert result["graph_results"] == []
 
     @pytest.mark.asyncio
-    @patch("src.langgraph.nodes._get_graph_searcher")
-    @patch("src.langgraph.nodes.settings")
-    async def test_graph_search_restaurant_items(self, mock_settings, mock_get_searcher):
+    async def test_graph_search_restaurant_items(self):
         """Test graph search for items from same restaurant."""
         mock_graph_results = [
             {"doc_id": "doc-2", "item_name": "Other Item"},
             {"doc_id": "doc-3", "item_name": "Another Item"},
         ]
 
-        mock_settings.enable_graph_search = True
-        mock_settings.graph_top_k = 30
-
         mock_searcher = AsyncMock()
         mock_searcher.get_restaurant_items.return_value = mock_graph_results
-        mock_get_searcher.return_value = mock_searcher
 
-        state = _base_state(
-            graph_query_type="restaurant_items",
-            reference_doc_id="doc-1",
-            filters={"price_max": 100},
-        )
-        result = await graph_search_node(state)
+        # Create async mock for _get_graph_searcher
+        async def mock_get_graph_searcher():
+            return mock_searcher
+
+        with patch("src.langgraph.nodes.settings") as mock_settings, \
+             patch("src.langgraph.nodes._get_graph_searcher", mock_get_graph_searcher):
+            mock_settings.enable_graph_search = True
+            mock_settings.graph_top_k = 30
+
+            state = _base_state(
+                graph_query_type="restaurant_items",
+                reference_doc_id="doc-1",
+                filters={"price_max": 100},
+            )
+            result = await graph_search_node(state)
 
         assert result["graph_results"] == mock_graph_results
         mock_searcher.get_restaurant_items.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("src.langgraph.nodes._get_graph_searcher")
-    @patch("src.langgraph.nodes.settings")
-    async def test_graph_search_similar_restaurants(self, mock_settings, mock_get_searcher):
+    async def test_graph_search_similar_restaurants(self):
         """Test graph search for similar restaurants."""
         mock_results = [
             {"restaurant_id": "rest-2", "restaurant_name": "Similar Place"},
         ]
 
-        mock_settings.enable_graph_search = True
-        mock_settings.graph_max_distance_km = 10.0
-
         mock_searcher = AsyncMock()
         mock_searcher.get_similar_restaurants.return_value = mock_results
-        mock_get_searcher.return_value = mock_searcher
 
-        state = _base_state(
-            graph_query_type="similar_restaurants",
-            reference_restaurant_id="rest-1",
-            filters={"city": "Boston"},
-        )
-        result = await graph_search_node(state)
+        async def mock_get_graph_searcher():
+            return mock_searcher
+
+        with patch("src.langgraph.nodes.settings") as mock_settings, \
+             patch("src.langgraph.nodes._get_graph_searcher", mock_get_graph_searcher):
+            mock_settings.enable_graph_search = True
+            mock_settings.graph_max_distance_km = 10.0
+
+            state = _base_state(
+                graph_query_type="similar_restaurants",
+                reference_restaurant_id="rest-1",
+                filters={"city": "Boston"},
+            )
+            result = await graph_search_node(state)
 
         assert result["graph_results"] == mock_results
 
     @pytest.mark.asyncio
-    @patch("src.langgraph.nodes._get_graph_searcher")
-    @patch("src.langgraph.nodes.settings")
-    async def test_graph_search_error_handling(self, mock_settings, mock_get_searcher):
+    async def test_graph_search_error_handling(self):
         """Test graceful error handling in graph search."""
-        mock_settings.enable_graph_search = True
-        mock_get_searcher.side_effect = Exception("Neo4j connection failed")
+        async def mock_get_graph_searcher():
+            raise Exception("Neo4j connection failed")
 
-        state = _base_state(
-            graph_query_type="restaurant_items",
-            reference_doc_id="doc-1",
-        )
-        result = await graph_search_node(state)
+        with patch("src.langgraph.nodes.settings") as mock_settings, \
+             patch("src.langgraph.nodes._get_graph_searcher", mock_get_graph_searcher):
+            mock_settings.enable_graph_search = True
+
+            state = _base_state(
+                graph_query_type="restaurant_items",
+                reference_doc_id="doc-1",
+            )
+            result = await graph_search_node(state)
 
         assert result["graph_results"] == []
         assert "Graph search failed" in result.get("error", "")
