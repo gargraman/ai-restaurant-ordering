@@ -141,6 +141,11 @@ class VectorSearcher:
             params.append(filters["restaurant_id"])
             param_idx += 1
 
+        if filters.get("exclude_restaurant_id"):
+            conditions.append(f"restaurant_id != ${param_idx}")
+            params.append(filters["exclude_restaurant_id"])
+            param_idx += 1
+
         # Add top_k as last parameter
         params.append(top_k)
 

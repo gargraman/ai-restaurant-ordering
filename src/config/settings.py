@@ -59,6 +59,24 @@ class Settings(BaseSettings):
     max_context_tokens: int = 4000
     max_per_restaurant: int = 3
 
+    # Neo4j (Phase 2)
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
+    neo4j_database: str = "neo4j"
+    neo4j_max_connection_pool_size: int = 50
+    neo4j_connection_timeout: int = 30  # seconds
+
+    # Graph Search Configuration
+    graph_top_k: int = 30  # Max results from graph queries
+    graph_weight: float = 1.0  # RRF weight for graph results
+    graph_max_distance_km: float = 10.0  # Default radius for "nearby"
+    graph_similarity_threshold: float = 0.5  # Min similarity for SIMILAR_TO
+
+    # Feature Flags
+    enable_graph_search: bool = False  # Disabled until Phase 2 implementation
+    enable_3way_rrf: bool = False  # Enable 3-way RRF fusion
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000

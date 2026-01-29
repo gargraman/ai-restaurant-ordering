@@ -139,6 +139,13 @@ class BM25Searcher:
         if filters.get("menu_type"):
             must_filters.append({"term": {"menu_name": filters["menu_type"]}})
 
+        if filters.get("exclude_restaurant_id"):
+            must_filters.append({
+                "bool": {
+                    "must_not": {"term": {"restaurant_id": filters["exclude_restaurant_id"]}}
+                }
+            })
+
         return must_filters
 
     def search_by_ids(self, doc_ids: list[str]) -> list[dict[str, Any]]:
