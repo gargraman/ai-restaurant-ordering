@@ -4,13 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Conversational Hybrid Search & RAG System for Catering Menus. Python 3.11+ with FastAPI, LangGraph orchestration, and hybrid search combining BM25 (OpenSearch) and vector similarity (pgvector).
+Conversational Hybrid Search & RAG System for Catering Menus. Python 3.11+ with FastAPI, LangGraph orchestration, and hybrid search combining BM25 (OpenSearch), vector similarity (pgvector), and graph relationships (Neo4j).
 
 ## Commands
 
 ```bash
-# Start infrastructure (OpenSearch, PostgreSQL+pgvector, Redis)
+# Start infrastructure (OpenSearch, PostgreSQL+pgvector, Redis, Neo4j)
 docker-compose -f docker/docker-compose.yml up -d
+
+# Start with optional GUI tools (Redis Commander, OpenSearch Dashboards)
+docker-compose -f docker/docker-compose.yml --profile tools up -d
 
 # Install dependencies
 pip install -e ".[dev]"
@@ -44,25 +47,39 @@ python scripts/run_ingestion.py <source> --recreate --batch-size 1000
 ```
 User Input → Context Resolver (Redis session) → Intent Detector
     ↓
-[Router based on intent: search/filter/clarify/compare]
+[Router based on intent: search/filter/clarify/graph]
     ├→ Clarification → END
     ├→ Filter Previous → Filter Node → Context Selector
-    └→ Search → Query Rewriter → [Parallel: BM25 + Vector Search]
+    ├→ Graph Search (Neo4j) → Context Selector (if enabled)
+    └→ Search → Query Rewriter → [BM25 + Vector Search]
                                         ↓
-                                  RRF Merge → Context Selector → RAG Generator → END
+                              RRF Merge (2-way or 3-way) → Context Selector → RAG Generator → END
 ```
 
 ### Key Modules
 
 - **`src/langgraph/`** - Orchestration pipeline
-  - `graph.py` - Graph definition and routing logic
-  - `nodes.py` - 10 node implementations (context_resolver, intent_detector, query_rewriter, bm25_search, vector_search, rrf_merge, context_selector, rag_generator, clarification, filter_previous)
+  - `graph.py` - Graph definition, routing logic, conditional edges
+  - `nodes.py` - 12 node implementations:
+    - `context_resolver_node` - Load session from Redis
+    - `intent_detector_node` - Classify intent (search/filter/clarify/compare)
+    - `query_rewriter_node` - Entity extraction and query expansion
+    - `bm25_search_node` - OpenSearch lexical search
+    - `vector_search_node` - pgvector semantic search
+    - `rrf_merge_node` - 2-way RRF fusion (BM25 + vector)
+    - `rrf_merge_3way_node` - 3-way RRF fusion (BM25 + vector + graph)
+    - `context_selector_node` - Diversity + token budget enforcement
+    - `rag_generator_node` - LLM response generation
+    - `clarification_node` - Request more info
+    - `filter_previous_node` - Filter existing results
+    - `graph_search_node` - Neo4j relationship queries
   - `prompts.py` - LLM prompts for intent detection, entity extraction, query expansion, RAG generation
 
 - **`src/search/`** - Search implementations
-  - `bm25.py` - OpenSearch lexical search with fuzzy matching
+  - `bm25.py` - OpenSearch lexical search with fuzzy matching, `exclude_restaurant_id` filter
   - `vector.py` - pgvector semantic search with OpenAI embeddings
-  - `hybrid.py` - RRF fusion algorithm combining both modalities
+  - `graph.py` - Neo4j graph search (restaurant_items, similar_restaurants, pairings, catering_packages)
+  - `hybrid.py` - RRF fusion algorithm
 
 - **`src/ingestion/`** - Data pipeline: JSON → IndexDocument → embeddings → OpenSearch + pgvector
 
@@ -79,6 +96,16 @@ User Input → Context Resolver (Redis session) → Intent Detector
 | OpenSearch | 9200 | BM25 lexical search index |
 | PostgreSQL+pgvector | 5433 | Vector similarity search |
 | Redis | 6379 | Session state storage |
+| Neo4j | 7474 (HTTP), 7687 (Bolt) | Graph relationships |
+| Redis Commander | 8081 | Redis GUI (optional, `--profile tools`) |
+| OpenSearch Dashboards | 5601 | OpenSearch GUI (optional, `--profile tools`) |
+
+### Feature Flags
+
+```python
+enable_graph_search: bool = False   # Enable Neo4j graph search
+enable_3way_rrf: bool = False       # Enable 3-way RRF fusion (BM25 + vector + graph)
+```
 
 ### Design Principles
 
@@ -87,17 +114,27 @@ User Input → Context Resolver (Redis session) → Intent Detector
 3. RRF is only ranking authority - no post-RRF reordering without explicit reranker
 4. Every node must be testable (pure functions with defined inputs/outputs)
 5. Nodes must be idempotent (same input → same output)
+6. Token budget enforced in context_selector_node (max_context_tokens - 500 buffer)
 
 ### Search Configuration
 
 - BM25 multi-field search: item_name(^3), item_description(^2), text, restaurant_name
 - Vector: OpenAI text-embedding-3-small (1536 dimensions), IVFFlat index
-- RRF: k=60, configurable weights (default BM25:1.0, Vector:1.0)
+- Graph: Neo4j Cypher queries for relationship traversal
+- RRF: k=60, configurable weights (default BM25:1.0, Vector:1.0, Graph:1.0)
 - Context selection: max 8 items, max 3 per restaurant, max 4000 tokens
+
+### Graph Search Query Types
+
+- `restaurant_items` - Other items from same restaurant
+- `similar_restaurants` - Find similar restaurants nearby (shared cuisines, proximity)
+- `pairing` - Items that pair well together (PAIRS_WITH relationships)
+- `catering_packages` - Complete package suggestions (appetizer + entree + dessert)
 
 ## Development Notes
 
-- Async/await throughout (asyncpg, redis.asyncio, FastAPI)
+- Async/await throughout (asyncpg, redis.asyncio, neo4j async, FastAPI)
 - Structured logging with structlog
 - Tests use pytest-asyncio with `asyncio_mode = "auto"`
 - Configuration via environment variables (see `.env.example`)
+- Python 3.8+ compatible (avoid parenthesized context managers in tests)
