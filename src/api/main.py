@@ -21,6 +21,7 @@ from src.models.state import GraphState
 from src.session.manager import SessionManager
 from src.search.hybrid import HybridSearcher
 from src.langgraph.graph import get_search_pipeline
+from src.langgraph.nodes import set_session_manager
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     # Initialize connections
     session_manager = SessionManager()
     await session_manager.connect()
+    set_session_manager(session_manager)
 
     hybrid_searcher = HybridSearcher()
     await hybrid_searcher.vector_searcher.connect()
@@ -135,9 +137,9 @@ def create_app() -> FastAPI:
                 "follow_up_type": None,
                 "confidence": 0.0,
                 "resolved_query": "",
-                "filters": session.entities.to_filters(),
+                "filters": {},
                 "expanded_query": "",
-                "candidate_doc_ids": session.previous_results,
+                "candidate_doc_ids": [],
                 "bm25_results": [],
                 "vector_results": [],
                 "merged_results": [],
@@ -155,6 +157,8 @@ def create_app() -> FastAPI:
             result_ids = result.get("sources", [])
             session.add_assistant_turn(result.get("answer", ""), result_ids)
             session.entities.update_from_filters(result.get("filters", {}))
+            session.previous_query = result.get("resolved_query") or request.user_input
+            session.previous_results = result_ids
             await session_manager.save_session(session)
 
             # Build response

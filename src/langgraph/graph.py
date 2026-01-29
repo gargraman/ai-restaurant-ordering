@@ -34,10 +34,14 @@ def route_after_intent(state: GraphState) -> Literal[
         return "clarification_node"
 
     # Follow-up that can filter existing results
-    if is_follow_up and follow_up_type in ("price", "serving", "dietary"):
-        # Only filter if we have previous results
-        if state.get("merged_results"):
+    if is_follow_up and follow_up_type in ("price", "serving", "dietary", "scope"):
+        # Only filter if we have previous results (full docs or at least IDs)
+        if state.get("merged_results") or state.get("candidate_doc_ids"):
             return "filter_previous_node"
+
+    # Location follow-up needs a new search with updated filters
+    if is_follow_up and follow_up_type == "location":
+        return "query_rewriter_node"
 
     # Default: run full search pipeline
     return "query_rewriter_node"

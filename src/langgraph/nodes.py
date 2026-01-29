@@ -15,17 +15,61 @@ from src.langgraph.prompts import (
     QUERY_EXPANSION_PROMPT,
     RAG_GENERATION_PROMPT,
 )
+from pydantic import BaseModel, Field as PydanticField, ValidationError
+
 from src.models.state import GraphState, SearchFilters
 from src.search.bm25 import BM25Searcher
 from src.search.vector import VectorSearcher
 
+
+class IntentDetectionResult(BaseModel):
+    """Validated LLM response for intent detection."""
+    intent: str = PydanticField(default="search", pattern=r"^(search|filter|clarify|compare)$")
+    is_follow_up: bool = False
+    follow_up_type: str | None = None
+    confidence: float = PydanticField(default=0.5, ge=0.0, le=1.0)
+
+
+class EntityExtractionResult(BaseModel):
+    """Validated LLM response for entity extraction."""
+    city: str | None = None
+    state: str | None = None
+    cuisine: list[str] | None = None
+    dietary_labels: list[str] | None = None
+    price_max: float | None = None
+    price_per_person_max: float | None = None
+    serves_min: int | None = None
+    serves_max: int | None = None
+    restaurant_name: str | None = None
+    tags: list[str] | None = None
+    item_keywords: list[str] | None = None
+    menu_type: str | None = None
+    price_adjustment: str | None = None
+    serving_adjustment: str | None = None
+    scope_same_restaurant: bool | None = None
+    scope_other_restaurants: bool | None = None
+
 logger = structlog.get_logger()
 settings = get_settings()
 
-# Singleton storage for searchers
+# Singleton storage for searchers and session manager
 _bm25_searcher: BM25Searcher | None = None
 _vector_searcher: VectorSearcher | None = None
 _vector_searcher_lock = asyncio.Lock()
+
+# Session manager set by API layer at startup
+_session_manager = None
+
+
+def set_session_manager(manager) -> None:
+    """Set the session manager instance (called by API layer at startup)."""
+    global _session_manager
+    _session_manager = manager
+
+
+def get_session_manager():
+    """Get the session manager instance."""
+    return _session_manager
 
 
 def _get_llm() -> ChatOpenAI:
@@ -69,8 +113,49 @@ async def context_resolver_node(state: GraphState) -> GraphState:
     """
     logger.info("context_resolver_node", session_id=state["session_id"])
 
-    # In a real implementation, this would load from Redis
-    # For now, we pass through - the API layer handles session loading
+    manager = get_session_manager()
+    if manager is None:
+        logger.warning("context_resolver_no_session_manager")
+        return state
+
+    try:
+        context = await manager.get_session_context(state["session_id"])
+
+        # Merge session entities into filters (don't overwrite explicit filters)
+        session_filters = context.get("entities", {})
+        current_filters = state.get("filters", {})
+        merged_filters: SearchFilters = {**session_filters, **current_filters}
+        state["filters"] = merged_filters
+
+        # Load previous results if not already set
+        if not state.get("candidate_doc_ids"):
+            state["candidate_doc_ids"] = context.get("previous_results", [])
+
+        # Load full documents for follow-up filtering
+        if state.get("candidate_doc_ids") and not state.get("merged_results"):
+            try:
+                searcher = _get_bm25_searcher()
+                docs = searcher.search_by_ids(state["candidate_doc_ids"])
+                if docs:
+                    state["merged_results"] = docs
+                    logger.info("previous_results_loaded", count=len(docs))
+            except Exception as e:
+                logger.error("previous_results_load_error", error=str(e))
+
+        # Store previous query for follow-up detection
+        if not state.get("resolved_query") and context.get("previous_query"):
+            state["resolved_query"] = context["previous_query"]
+
+        logger.info(
+            "context_resolved",
+            session_id=state["session_id"],
+            entity_count=len(merged_filters),
+            previous_results=len(state.get("candidate_doc_ids", [])),
+            merged_results=len(state.get("merged_results", [])),
+        )
+
+    except Exception as e:
+        logger.error("context_resolver_error", error=str(e))
 
     return state
 
@@ -102,12 +187,13 @@ async def intent_detector_node(state: GraphState) -> GraphState:
 
     try:
         response = await llm.ainvoke(prompt)
-        result = json.loads(response.content)
+        raw = json.loads(response.content)
+        result = IntentDetectionResult.model_validate(raw)
 
-        state["intent"] = result.get("intent", "search")
-        state["is_follow_up"] = result.get("is_follow_up", False)
-        state["follow_up_type"] = result.get("follow_up_type")
-        state["confidence"] = result.get("confidence", 0.5)
+        state["intent"] = result.intent
+        state["is_follow_up"] = result.is_follow_up
+        state["follow_up_type"] = result.follow_up_type
+        state["confidence"] = result.confidence
 
         logger.info(
             "intent_detected",
@@ -115,6 +201,13 @@ async def intent_detector_node(state: GraphState) -> GraphState:
             is_follow_up=state["is_follow_up"],
             follow_up_type=state["follow_up_type"],
         )
+
+    except (json.JSONDecodeError, ValidationError) as e:
+        logger.error("intent_detection_parse_error", error=str(e))
+        state["intent"] = "search"
+        state["is_follow_up"] = False
+        state["follow_up_type"] = None
+        state["confidence"] = 0.5
 
     except Exception as e:
         logger.error("intent_detection_error", error=str(e))
@@ -147,18 +240,47 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
 
     try:
         response = await llm.ainvoke(entity_prompt)
-        extracted = json.loads(response.content)
+        raw = json.loads(response.content)
+        extracted_model = EntityExtractionResult.model_validate(raw)
+        extracted = {k: v for k, v in extracted_model.model_dump().items() if v is not None}
 
         # Merge extracted entities with existing filters
         filters: SearchFilters = {**current_filters}
 
         for key, value in extracted.items():
-            if value is not None and key != "price_adjustment":
+            if key not in ("price_adjustment", "serving_adjustment", "item_keywords"):
                 filters[key] = value
 
-        # Handle price adjustment for follow-ups
-        if extracted.get("price_adjustment") == "decrease" and "price_max" in filters:
-            filters["price_max"] = filters["price_max"] * 0.8
+        # Handle price adjustment for follow-ups (§7.2 rules)
+        if extracted.get("price_adjustment") == "decrease":
+            # Use min of previous result prices * 0.9 if available
+            previous_results = state.get("merged_results", [])
+            previous_prices = [
+                d["display_price"]
+                for d in previous_results
+                if d.get("display_price")
+            ]
+            if previous_prices:
+                filters["price_max"] = min(previous_prices) * 0.9
+            elif "price_max" in filters:
+                filters["price_max"] = filters["price_max"] * 0.9
+
+        # Handle serving adjustment for follow-ups
+        if extracted.get("serving_adjustment") == "increase":
+            current_max = filters.get("serves_max") or filters.get("serves_min")
+            if current_max:
+                filters["serves_min"] = current_max
+
+        # Handle scope: "same restaurant" / "other restaurants"
+        if extracted.get("scope_same_restaurant"):
+            previous_results = state.get("merged_results", [])
+            if previous_results:
+                filters["restaurant_id"] = previous_results[0].get("restaurant_id")
+
+        if extracted.get("scope_other_restaurants"):
+            previous_results = state.get("merged_results", [])
+            if previous_results:
+                filters["exclude_restaurant_id"] = previous_results[0].get("restaurant_id")
 
         state["filters"] = filters
 
@@ -468,6 +590,8 @@ async def filter_previous_node(state: GraphState) -> GraphState:
     previous = state.get("merged_results", [])
     filters = state.get("filters", {})
 
+    follow_up_type = state.get("follow_up_type")
+
     filtered = []
     for doc in previous:
         # Price filter
@@ -480,9 +604,20 @@ async def filter_previous_node(state: GraphState) -> GraphState:
             if doc["serves_max"] < filters["serves_min"]:
                 continue
 
-        # Dietary filter
-        if filters.get("dietary_labels") and doc.get("dietary_labels"):
-            if not any(d in doc["dietary_labels"] for d in filters["dietary_labels"]):
+        # Dietary filter — exclude docs that don't have the required labels
+        if filters.get("dietary_labels"):
+            doc_labels = doc.get("dietary_labels") or []
+            if not any(d in doc_labels for d in filters["dietary_labels"]):
+                continue
+
+        # Scope filter: "same restaurant" — keep only matching restaurant_id
+        if follow_up_type == "scope" and filters.get("restaurant_id"):
+            if doc.get("restaurant_id") != filters["restaurant_id"]:
+                continue
+
+        # Scope filter: "other restaurants" — exclude restaurant_id
+        if follow_up_type == "scope" and filters.get("exclude_restaurant_id"):
+            if doc.get("restaurant_id") == filters["exclude_restaurant_id"]:
                 continue
 
         filtered.append(doc)

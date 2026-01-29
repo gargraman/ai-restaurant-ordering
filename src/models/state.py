@@ -21,6 +21,7 @@ class SearchFilters(TypedDict, total=False):
     tags: list[str]
     restaurant_name: str
     restaurant_id: str
+    exclude_restaurant_id: str
     menu_type: str  # Catering, Lunch, Dinner
 
 

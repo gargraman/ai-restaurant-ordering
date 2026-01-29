@@ -54,7 +54,10 @@ Output JSON only (include only fields mentioned or implied):
   "serves_min": number or null,
   "serves_max": number or null,
   "item_keywords": ["array"] or null,
-  "price_adjustment": "increase|decrease|null"
+  "price_adjustment": "increase|decrease|null",
+  "serving_adjustment": "increase|decrease|null",
+  "scope_same_restaurant": true or null,
+  "scope_other_restaurants": true or null
 }}"""
 
 QUERY_EXPANSION_PROMPT = """Expand the user query into a search-optimized query for catering menus.
