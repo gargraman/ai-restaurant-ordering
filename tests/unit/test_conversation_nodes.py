@@ -10,12 +10,16 @@ from src.langgraph.nodes import (
     intent_detector_node,
     query_rewriter_node,
     rrf_merge_node,
+    rrf_merge_3way_node,
     context_selector_node,
     rag_generator_node,
     clarification_node,
     filter_previous_node,
+    graph_search_node,
     set_session_manager,
     get_session_manager,
+    _estimate_tokens,
+    _format_context_item,
 )
 from src.langgraph.graph import route_after_intent
 
@@ -941,3 +945,337 @@ class TestScopeDetection:
             result = await query_rewriter_node(state)
 
         assert "restaurant_id" not in result["filters"]
+
+
+# --- Token Estimation ---
+
+
+class TestTokenEstimation:
+    """Tests for token estimation utility."""
+
+    def test_estimate_tokens_empty_string(self):
+        """Test token estimation for empty string."""
+        assert _estimate_tokens("") == 0
+
+    def test_estimate_tokens_short_text(self):
+        """Test token estimation for short text."""
+        # "Hello world" = 11 chars, ~3 tokens (with 10% buffer)
+        result = _estimate_tokens("Hello world")
+        assert result > 0
+        assert result < 10
+
+    def test_estimate_tokens_long_text(self):
+        """Test token estimation for longer text."""
+        text = "This is a much longer piece of text that should estimate to more tokens."
+        result = _estimate_tokens(text)
+        # ~75 chars / 4 * 1.1 = ~21 tokens
+        assert result > 15
+        assert result < 30
+
+    def test_estimate_tokens_formatted_context(self):
+        """Test token estimation for formatted menu item."""
+        doc = _sample_docs()[0]
+        formatted = _format_context_item(doc)
+        tokens = _estimate_tokens(formatted)
+        # Formatted context should be reasonable size
+        assert tokens > 20
+        assert tokens < 200
+
+
+# --- Context Selector with Token Budget ---
+
+
+class TestContextSelectorTokenBudget:
+    """Tests for token budget enforcement in context_selector_node."""
+
+    @pytest.mark.asyncio
+    async def test_respects_token_budget(self):
+        """Test that token budget is enforced."""
+        # Create many docs that would exceed token budget
+        docs = []
+        for i in range(20):
+            doc = _sample_docs()[0].copy()
+            doc["doc_id"] = f"doc-{i}"
+            doc["restaurant_id"] = f"rest-{i}"  # Different restaurants
+            doc["item_description"] = "A" * 500  # Long description
+            docs.append(doc)
+
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.max_context_items = 20
+            mock_settings.max_per_restaurant = 10
+            mock_settings.max_context_tokens = 1000  # Small budget
+
+            state = {"merged_results": docs}
+            result = await context_selector_node(state)
+
+        # Should stop before hitting max_items due to token budget
+        assert len(result["final_context"]) < 20
+
+    @pytest.mark.asyncio
+    async def test_token_budget_with_small_docs(self):
+        """Test that small docs fit within budget."""
+        docs = _sample_docs()  # Only 3 small docs
+
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.max_context_items = 8
+            mock_settings.max_per_restaurant = 3
+            mock_settings.max_context_tokens = 4000
+
+            state = {"merged_results": docs}
+            result = await context_selector_node(state)
+
+        # All docs should fit
+        assert len(result["final_context"]) == 3
+
+
+# --- Graph Search Node ---
+
+
+class TestGraphSearchNode:
+    """Tests for graph_search_node."""
+
+    @pytest.mark.asyncio
+    async def test_graph_search_disabled(self):
+        """Test that graph search returns empty when disabled."""
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.enable_graph_search = False
+
+            state = _base_state(
+                graph_query_type="restaurant_items",
+                reference_doc_id="doc-1",
+            )
+            result = await graph_search_node(state)
+
+        assert result["graph_results"] == []
+
+    @pytest.mark.asyncio
+    @patch("src.langgraph.nodes._get_graph_searcher")
+    @patch("src.langgraph.nodes.settings")
+    async def test_graph_search_restaurant_items(self, mock_settings, mock_get_searcher):
+        """Test graph search for items from same restaurant."""
+        mock_graph_results = [
+            {"doc_id": "doc-2", "item_name": "Other Item"},
+            {"doc_id": "doc-3", "item_name": "Another Item"},
+        ]
+
+        mock_settings.enable_graph_search = True
+        mock_settings.graph_top_k = 30
+
+        mock_searcher = AsyncMock()
+        mock_searcher.get_restaurant_items.return_value = mock_graph_results
+        mock_get_searcher.return_value = mock_searcher
+
+        state = _base_state(
+            graph_query_type="restaurant_items",
+            reference_doc_id="doc-1",
+            filters={"price_max": 100},
+        )
+        result = await graph_search_node(state)
+
+        assert result["graph_results"] == mock_graph_results
+        mock_searcher.get_restaurant_items.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("src.langgraph.nodes._get_graph_searcher")
+    @patch("src.langgraph.nodes.settings")
+    async def test_graph_search_similar_restaurants(self, mock_settings, mock_get_searcher):
+        """Test graph search for similar restaurants."""
+        mock_results = [
+            {"restaurant_id": "rest-2", "restaurant_name": "Similar Place"},
+        ]
+
+        mock_settings.enable_graph_search = True
+        mock_settings.graph_max_distance_km = 10.0
+
+        mock_searcher = AsyncMock()
+        mock_searcher.get_similar_restaurants.return_value = mock_results
+        mock_get_searcher.return_value = mock_searcher
+
+        state = _base_state(
+            graph_query_type="similar_restaurants",
+            reference_restaurant_id="rest-1",
+            filters={"city": "Boston"},
+        )
+        result = await graph_search_node(state)
+
+        assert result["graph_results"] == mock_results
+
+    @pytest.mark.asyncio
+    @patch("src.langgraph.nodes._get_graph_searcher")
+    @patch("src.langgraph.nodes.settings")
+    async def test_graph_search_error_handling(self, mock_settings, mock_get_searcher):
+        """Test graceful error handling in graph search."""
+        mock_settings.enable_graph_search = True
+        mock_get_searcher.side_effect = Exception("Neo4j connection failed")
+
+        state = _base_state(
+            graph_query_type="restaurant_items",
+            reference_doc_id="doc-1",
+        )
+        result = await graph_search_node(state)
+
+        assert result["graph_results"] == []
+        assert "Graph search failed" in result.get("error", "")
+
+
+# --- 3-Way RRF Merge Node ---
+
+
+class TestRRFMerge3WayNode:
+    """Tests for rrf_merge_3way_node."""
+
+    @pytest.mark.asyncio
+    async def test_3way_merge_combines_all_sources(self):
+        """Test that 3-way merge combines BM25, vector, and graph results."""
+        state = _base_state(
+            bm25_results=[
+                {"doc_id": "a", "item_name": "A"},
+                {"doc_id": "b", "item_name": "B"},
+            ],
+            vector_results=[
+                {"doc_id": "b", "item_name": "B"},
+                {"doc_id": "c", "item_name": "C"},
+            ],
+            graph_results=[
+                {"doc_id": "c", "item_name": "C"},
+                {"doc_id": "d", "item_name": "D"},
+            ],
+        )
+
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.rrf_k = 60
+            mock_settings.bm25_weight = 1.0
+            mock_settings.vector_weight = 1.0
+            mock_settings.graph_weight = 1.0
+
+            result = await rrf_merge_3way_node(state)
+
+        doc_ids = [d["doc_id"] for d in result["merged_results"]]
+        assert set(doc_ids) == {"a", "b", "c", "d"}
+
+        # Check that docs appearing in multiple sources have higher scores
+        scores = {d["doc_id"]: d["rrf_score"] for d in result["merged_results"]}
+        # 'b' appears in BM25 and vector, 'c' appears in vector and graph
+        assert scores["b"] > scores["a"]  # b in 2 sources, a in 1
+        assert scores["c"] > scores["d"]  # c in 2 sources, d in 1
+
+    @pytest.mark.asyncio
+    async def test_3way_merge_tracks_sources(self):
+        """Test that merge tracks which sources contributed each doc."""
+        state = _base_state(
+            bm25_results=[{"doc_id": "a"}],
+            vector_results=[{"doc_id": "a"}, {"doc_id": "b"}],
+            graph_results=[{"doc_id": "b"}, {"doc_id": "c"}],
+        )
+
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.rrf_k = 60
+            mock_settings.bm25_weight = 1.0
+            mock_settings.vector_weight = 1.0
+            mock_settings.graph_weight = 1.0
+
+            result = await rrf_merge_3way_node(state)
+
+        docs_by_id = {d["doc_id"]: d for d in result["merged_results"]}
+
+        assert docs_by_id["a"]["in_bm25"] is True
+        assert docs_by_id["a"]["in_vector"] is True
+        assert docs_by_id["a"]["in_graph"] is False
+
+        assert docs_by_id["b"]["in_bm25"] is False
+        assert docs_by_id["b"]["in_vector"] is True
+        assert docs_by_id["b"]["in_graph"] is True
+
+        assert docs_by_id["c"]["in_bm25"] is False
+        assert docs_by_id["c"]["in_vector"] is False
+        assert docs_by_id["c"]["in_graph"] is True
+
+    @pytest.mark.asyncio
+    async def test_3way_merge_fallback_to_2way(self):
+        """Test that empty graph results falls back to 2-way merge."""
+        state = _base_state(
+            bm25_results=[{"doc_id": "a"}],
+            vector_results=[{"doc_id": "b"}],
+            graph_results=[],  # Empty
+        )
+
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.rrf_k = 60
+            mock_settings.bm25_weight = 1.0
+            mock_settings.vector_weight = 1.0
+
+            result = await rrf_merge_3way_node(state)
+
+        # Should still work with 2-way merge
+        doc_ids = [d["doc_id"] for d in result["merged_results"]]
+        assert set(doc_ids) == {"a", "b"}
+
+    @pytest.mark.asyncio
+    async def test_3way_merge_weighted(self):
+        """Test that weights affect final scores."""
+        state = _base_state(
+            bm25_results=[{"doc_id": "a"}],
+            vector_results=[{"doc_id": "b"}],
+            graph_results=[{"doc_id": "c"}],
+        )
+
+        # Test with high graph weight
+        with patch("src.langgraph.nodes.settings") as mock_settings:
+            mock_settings.rrf_k = 60
+            mock_settings.bm25_weight = 1.0
+            mock_settings.vector_weight = 1.0
+            mock_settings.graph_weight = 3.0  # High graph weight
+
+            result = await rrf_merge_3way_node(state)
+
+        scores = {d["doc_id"]: d["rrf_score"] for d in result["merged_results"]}
+        # With 3x graph weight, graph-only doc should have higher score
+        assert scores["c"] > scores["a"]
+        assert scores["c"] > scores["b"]
+
+
+# --- Graph Routing ---
+
+
+class TestGraphRouting:
+    """Tests for graph-related routing logic."""
+
+    def test_routes_to_graph_search_when_enabled(self):
+        """Test routing to graph search node when enabled and detected."""
+        with patch("src.langgraph.graph.settings") as mock_settings:
+            mock_settings.enable_graph_search = True
+
+            state = _base_state(
+                requires_graph=True,
+                graph_query_type="restaurant_items",
+            )
+            result = route_after_intent(state)
+
+        assert result == "graph_search_node"
+
+    def test_skips_graph_search_when_disabled(self):
+        """Test that graph search is skipped when disabled."""
+        with patch("src.langgraph.graph.settings") as mock_settings:
+            mock_settings.enable_graph_search = False
+
+            state = _base_state(
+                requires_graph=True,
+                graph_query_type="restaurant_items",
+            )
+            result = route_after_intent(state)
+
+        # Should fall through to default search
+        assert result == "query_rewriter_node"
+
+    def test_skips_graph_for_non_graph_query_types(self):
+        """Test that unsupported graph query types fall through."""
+        with patch("src.langgraph.graph.settings") as mock_settings:
+            mock_settings.enable_graph_search = True
+
+            state = _base_state(
+                requires_graph=True,
+                graph_query_type="unsupported_type",
+            )
+            result = route_after_intent(state)
+
+        assert result == "query_rewriter_node"
