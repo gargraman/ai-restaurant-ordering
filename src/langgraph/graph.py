@@ -4,6 +4,7 @@ from typing import Literal
 
 from langgraph.graph import StateGraph, END
 
+from src.config import get_settings
 from src.models.state import GraphState
 from src.langgraph.nodes import (
     context_resolver_node,
@@ -16,22 +17,34 @@ from src.langgraph.nodes import (
     rag_generator_node,
     clarification_node,
     filter_previous_node,
+    graph_search_node,
+    rrf_merge_3way_node,
 )
+
+settings = get_settings()
 
 
 def route_after_intent(state: GraphState) -> Literal[
     "clarification_node",
     "filter_previous_node",
     "query_rewriter_node",
+    "graph_search_node",
 ]:
     """Route based on intent and follow-up detection."""
     intent = state.get("intent", "search")
     is_follow_up = state.get("is_follow_up", False)
     follow_up_type = state.get("follow_up_type")
+    requires_graph = state.get("requires_graph", False)
+    graph_query_type = state.get("graph_query_type")
 
     # Clarification needed
     if intent == "clarify":
         return "clarification_node"
+
+    # Graph-only queries (when enabled and detected)
+    if settings.enable_graph_search and requires_graph:
+        if graph_query_type in ("restaurant_items", "similar_restaurants", "pairing"):
+            return "graph_search_node"
 
     # Follow-up that can filter existing results
     if is_follow_up and follow_up_type in ("price", "serving", "dietary", "scope"):
@@ -60,6 +73,30 @@ def route_after_filter(state: GraphState) -> Literal[
     return "query_rewriter_node"
 
 
+def route_after_graph_search(state: GraphState) -> Literal[
+    "context_selector_node",
+    "query_rewriter_node",
+]:
+    """Route after graph-only search."""
+    # If graph returned results, proceed to context selection
+    if state.get("graph_results"):
+        return "context_selector_node"
+
+    # No graph results, fallback to text search
+    return "query_rewriter_node"
+
+
+def route_to_merge_node(state: GraphState) -> Literal[
+    "rrf_merge_node",
+    "rrf_merge_3way_node",
+]:
+    """Route to appropriate merge node based on graph results."""
+    # Use 3-way RRF if graph search is enabled and has results
+    if settings.enable_3way_rrf and state.get("graph_results"):
+        return "rrf_merge_3way_node"
+    return "rrf_merge_node"
+
+
 def create_search_graph() -> StateGraph:
     """Create the LangGraph search pipeline.
 
@@ -69,6 +106,7 @@ def create_search_graph() -> StateGraph:
     3. Router → Route based on intent
        - clarify → Clarification Node → END
        - filter (follow-up) → Filter Previous → Context Selector
+       - graph (relationship) → Graph Search → Context Selector (if enabled)
        - search → Query Rewriter → Parallel Search → RRF Merge
     4. Context Selector → Select diverse results
     5. RAG Generator → Generate response
@@ -88,6 +126,10 @@ def create_search_graph() -> StateGraph:
     graph.add_node("clarification_node", clarification_node)
     graph.add_node("filter_previous_node", filter_previous_node)
 
+    # Add graph search nodes (Phase 5)
+    graph.add_node("graph_search_node", graph_search_node)
+    graph.add_node("rrf_merge_3way_node", rrf_merge_3way_node)
+
     # Set entry point
     graph.set_entry_point("context_resolver_node")
 
@@ -102,6 +144,7 @@ def create_search_graph() -> StateGraph:
             "clarification_node": "clarification_node",
             "filter_previous_node": "filter_previous_node",
             "query_rewriter_node": "query_rewriter_node",
+            "graph_search_node": "graph_search_node",
         },
     )
 
@@ -118,6 +161,16 @@ def create_search_graph() -> StateGraph:
         },
     )
 
+    # Graph search routing - if no results, fall back to text search
+    graph.add_conditional_edges(
+        "graph_search_node",
+        route_after_graph_search,
+        {
+            "context_selector_node": "context_selector_node",
+            "query_rewriter_node": "query_rewriter_node",
+        },
+    )
+
     # Query rewriter to parallel search
     # Note: In LangGraph, parallel execution requires special handling
     # For simplicity, we run searches sequentially here
@@ -127,6 +180,9 @@ def create_search_graph() -> StateGraph:
 
     # After merge, select context
     graph.add_edge("rrf_merge_node", "context_selector_node")
+
+    # 3-way merge also goes to context selector
+    graph.add_edge("rrf_merge_3way_node", "context_selector_node")
 
     # Context selection to RAG
     graph.add_edge("context_selector_node", "rag_generator_node")

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 from collections import defaultdict
 
 import structlog
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field as PydanticField, ValidationError
 from src.models.state import GraphState, SearchFilters
 from src.search.bm25 import BM25Searcher
 from src.search.vector import VectorSearcher
+from src.search.graph import GraphSearcher
 
 
 class IntentDetectionResult(BaseModel):
@@ -439,7 +441,7 @@ async def context_selector_node(state: GraphState) -> GraphState:
 
     Applies diversity rules:
     - Max items per restaurant
-    - Token budget
+    - Token budget (max_context_tokens with 500-token buffer)
     - Variety in cuisine/price
     """
     logger.info("context_selector_node", merged_count=len(state.get("merged_results", [])))
@@ -447,9 +449,12 @@ async def context_selector_node(state: GraphState) -> GraphState:
     merged = state.get("merged_results", [])
     max_items = settings.max_context_items
     max_per_restaurant = settings.max_per_restaurant
+    max_tokens = settings.max_context_tokens
+    token_buffer = 500  # Reserve tokens for prompt template and response
 
     restaurant_counts: dict[str, int] = defaultdict(int)
     selected = []
+    current_tokens = 0
 
     for doc in merged:
         restaurant_id = doc.get("restaurant_id", "unknown")
@@ -462,15 +467,53 @@ async def context_selector_node(state: GraphState) -> GraphState:
         if len(selected) >= max_items:
             break
 
+        # Check token budget
+        formatted_doc = _format_context_item(doc)
+        doc_tokens = _estimate_tokens(formatted_doc)
+
+        if current_tokens + doc_tokens > (max_tokens - token_buffer):
+            logger.info(
+                "token_budget_reached",
+                current_tokens=current_tokens,
+                doc_tokens=doc_tokens,
+                max_tokens=max_tokens,
+            )
+            break
+
         selected.append(doc)
         restaurant_counts[restaurant_id] += 1
+        current_tokens += doc_tokens
 
     state["final_context"] = selected
     state["candidate_doc_ids"] = [d.get("doc_id") for d in selected if d.get("doc_id")]
 
-    logger.info("context_selected", selected_count=len(selected))
+    logger.info(
+        "context_selected",
+        selected_count=len(selected),
+        total_tokens=current_tokens,
+        max_tokens=max_tokens,
+    )
 
     return state
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count for text.
+
+    Uses a simple heuristic: ~4 characters per token for English text.
+    This is a conservative estimate that works well for GPT models.
+
+    Args:
+        text: Input text to estimate tokens for
+
+    Returns:
+        Estimated token count
+    """
+    if not text:
+        return 0
+    # ~4 chars per token is a good approximation for English
+    # Add 10% buffer for safety
+    return math.ceil(len(text) / 4 * 1.1)
 
 
 def _format_context_item(doc: dict) -> str:
@@ -625,5 +668,170 @@ async def filter_previous_node(state: GraphState) -> GraphState:
     state["merged_results"] = filtered
 
     logger.info("filter_previous_complete", filtered_count=len(filtered))
+
+    return state
+
+
+# Graph searcher singleton
+_graph_searcher: GraphSearcher | None = None
+_graph_searcher_lock = asyncio.Lock()
+
+
+async def _get_graph_searcher() -> GraphSearcher:
+    """Get or create the graph searcher singleton."""
+    global _graph_searcher
+    async with _graph_searcher_lock:
+        if _graph_searcher is None:
+            _graph_searcher = GraphSearcher()
+            await _graph_searcher.connect()
+        return _graph_searcher
+
+
+async def graph_search_node(state: GraphState) -> GraphState:
+    """Execute Neo4j graph queries for relationship-based search.
+
+    Routes to appropriate Cypher query based on graph_query_type:
+    - restaurant_items: Other items from same restaurant
+    - similar_restaurants: Find similar restaurants nearby
+    - pairing: Items that pair well together
+
+    Only executes if enable_graph_search is True.
+    """
+    if not settings.enable_graph_search:
+        logger.info("graph_search_skipped", reason="feature_disabled")
+        state["graph_results"] = []
+        return state
+
+    graph_query_type = state.get("graph_query_type")
+    reference_doc_id = state.get("reference_doc_id")
+    filters = state.get("filters", {})
+
+    logger.info(
+        "graph_search_node",
+        query_type=graph_query_type,
+        reference_doc_id=reference_doc_id,
+    )
+
+    try:
+        searcher = await _get_graph_searcher()
+        results = []
+
+        if graph_query_type == "restaurant_items" and reference_doc_id:
+            # "Show me more from this restaurant"
+            results = await searcher.get_restaurant_items(
+                doc_id=reference_doc_id,
+                filters=filters,
+                limit=settings.graph_top_k,
+            )
+
+        elif graph_query_type == "similar_restaurants":
+            # "Similar restaurants nearby"
+            restaurant_id = state.get("reference_restaurant_id")
+            if restaurant_id:
+                results = await searcher.get_similar_restaurants(
+                    restaurant_id=restaurant_id,
+                    city=filters.get("city"),
+                    max_distance_km=settings.graph_max_distance_km,
+                    limit=5,
+                )
+
+        elif graph_query_type == "pairing" and reference_doc_id:
+            # "What pairs well with this item"
+            results = await searcher.get_item_pairs(
+                doc_id=reference_doc_id,
+                limit=10,
+            )
+
+        state["graph_results"] = results
+        logger.info("graph_search_complete", result_count=len(results))
+
+    except Exception as e:
+        logger.error("graph_search_error", error=str(e))
+        state["graph_results"] = []
+        state["error"] = f"Graph search failed: {str(e)}"
+
+    return state
+
+
+async def rrf_merge_3way_node(state: GraphState) -> GraphState:
+    """Merge BM25, vector, and graph results using 3-way RRF.
+
+    Only used when graph search is enabled and returns results.
+    Falls back to 2-way RRF if graph results are empty.
+    """
+    bm25_results = state.get("bm25_results", [])
+    vector_results = state.get("vector_results", [])
+    graph_results = state.get("graph_results", [])
+
+    logger.info(
+        "rrf_merge_3way_node",
+        bm25_count=len(bm25_results),
+        vector_count=len(vector_results),
+        graph_count=len(graph_results),
+    )
+
+    # If no graph results, use standard 2-way merge
+    if not graph_results:
+        return await rrf_merge_node(state)
+
+    # 3-way RRF merge
+    k = settings.rrf_k
+    bm25_weight = settings.bm25_weight
+    vector_weight = settings.vector_weight
+    graph_weight = settings.graph_weight
+
+    scores: dict[str, float] = defaultdict(float)
+    doc_map: dict[str, dict] = {}
+    sources: dict[str, set] = defaultdict(set)
+
+    # Score BM25 results
+    for rank, doc in enumerate(bm25_results, start=1):
+        doc_id = doc.get("doc_id")
+        if doc_id:
+            scores[doc_id] += bm25_weight / (k + rank)
+            doc_map[doc_id] = doc
+            sources[doc_id].add("bm25")
+
+    # Score vector results
+    for rank, doc in enumerate(vector_results, start=1):
+        doc_id = doc.get("doc_id")
+        if doc_id:
+            scores[doc_id] += vector_weight / (k + rank)
+            if doc_id not in doc_map:
+                doc_map[doc_id] = doc
+            sources[doc_id].add("vector")
+
+    # Score graph results
+    for rank, doc in enumerate(graph_results, start=1):
+        doc_id = doc.get("doc_id")
+        if doc_id:
+            scores[doc_id] += graph_weight / (k + rank)
+            if doc_id not in doc_map:
+                doc_map[doc_id] = doc
+            sources[doc_id].add("graph")
+
+    # Sort by RRF score
+    sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+
+    # Build merged results with source info
+    merged = []
+    for doc_id in sorted_ids:
+        doc = doc_map[doc_id].copy()
+        doc["rrf_score"] = scores[doc_id]
+        doc["sources"] = list(sources[doc_id])
+        doc["in_bm25"] = "bm25" in sources[doc_id]
+        doc["in_vector"] = "vector" in sources[doc_id]
+        doc["in_graph"] = "graph" in sources[doc_id]
+        merged.append(doc)
+
+    state["merged_results"] = merged
+
+    logger.info(
+        "rrf_merge_3way_complete",
+        merged_count=len(merged),
+        from_bm25=sum(1 for d in merged if d.get("in_bm25")),
+        from_vector=sum(1 for d in merged if d.get("in_vector")),
+        from_graph=sum(1 for d in merged if d.get("in_graph")),
+    )
 
     return state
