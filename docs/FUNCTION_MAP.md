@@ -465,3 +465,136 @@ No external dependencies
 └── Direct function calls
 ```
 
+---
+
+## Monitoring & Metrics (`src/metrics.py`)
+
+### Metric Definitions
+```
+REQUEST_COUNT (Counter)
+├── Labels: method, endpoint, status
+└── Tracks: Total HTTP requests
+
+REQUEST_DURATION (Histogram)
+├── Labels: method, endpoint
+└── Tracks: HTTP request duration
+
+ACTIVE_SESSIONS (Gauge)
+└── Tracks: Number of active sessions
+
+SESSION_DURATION (Histogram)
+└── Tracks: Session duration in seconds
+
+APPLICATION_ERRORS (Counter)
+├── Labels: type, endpoint
+└── Tracks: Total application errors
+
+LLM_CALL_DURATION (Histogram)
+├── Labels: model, operation
+└── Tracks: LLM call duration
+
+LLM_CALLS_TOTAL (Counter)
+├── Labels: model, operation
+└── Tracks: Total LLM calls
+
+LLM_TOKEN_USAGE_INPUT (Counter)
+├── Labels: model
+└── Tracks: Total input tokens used
+
+LLM_TOKEN_USAGE_OUTPUT (Counter)
+├── Labels: model
+└── Tracks: Total output tokens used
+
+LLM_COST_USD (Counter)
+├── Labels: model
+└── Tracks: LLM cost in USD
+
+SEARCH_REQUESTS_TOTAL (Counter)
+├── Labels: search_type
+└── Tracks: Total search requests
+
+SEARCH_DURATION_SECONDS (Histogram)
+├── Labels: search_type
+└── Tracks: Search duration in seconds
+
+BM25_SEARCH_RESULTS_COUNT (Histogram)
+└── Tracks: Number of BM25 search results
+
+VECTOR_SEARCH_RESULTS_COUNT (Histogram)
+└── Tracks: Number of vector search results
+
+GRAPH_SEARCH_RESULTS_COUNT (Histogram)
+└── Tracks: Number of graph search results
+
+ZERO_RESULTS_SEARCHES_TOTAL (Counter)
+├── Labels: search_type
+└── Tracks: Total searches with zero results
+
+USER_FEEDBACK_RATING (Histogram)
+├── Labels: result_type
+└── Tracks: User feedback rating
+
+SYSTEM METRICS
+├── CPU_PERCENT (Gauge) - CPU usage percentage
+├── MEMORY_PERCENT (Gauge) - Memory usage percentage
+├── PROCESS_MEMORY_MB (Gauge) - Process memory usage in MB
+└── FILE_DESCRIPTOR_COUNT (Gauge) - Number of file descriptors
+```
+
+### Metric Recording Functions
+```
+record_llm_call(model, operation, duration, input_tokens, output_tokens)
+├── Records: LLM_CALL_DURATION, LLM_CALLS_TOTAL
+├── Records: LLM_TOKEN_USAGE_INPUT, LLM_TOKEN_USAGE_OUTPUT
+├── Records: LLM_COST_USD, FEATURE_COST_USD_TOTAL
+└── Calculates cost based on token usage
+
+record_search_request(search_type, duration, result_count, relevance_score)
+├── Records: SEARCH_REQUESTS_TOTAL
+├── Records: SEARCH_DURATION_SECONDS
+├── Records: *_SEARCH_RESULTS_COUNT based on search_type
+├── Records: ZERO_RESULTS_SEARCHES_TOTAL if result_count == 0
+└── Records: SEARCH_RELEVANCE_SCORE if relevance_score provided
+
+record_user_feedback(result_type, rating)
+└── Records: USER_FEEDBACK_RATING
+
+record_database_metrics(database, connections_used, connections_available)
+├── Records: DATABASE_CONNECTIONS
+└── Records: DATABASE_CONNECTION_POOL_UTILIZATION
+
+record_database_query_performance(database, query_type, table, duration, is_error)
+├── Records: DATABASE_QUERY_DURATION_SECONDS_BUCKET
+└── Records: DATABASE_QUERY_ERROR_RATE if is_error
+
+collect_system_metrics()
+├── Updates: CPU_PERCENT, MEMORY_PERCENT
+├── Updates: PROCESS_MEMORY_MB, FILE_DESCRIPTOR_COUNT
+└── Runs continuously as background task
+```
+
+## Middleware (`src/monitoring/middleware.py`)
+
+### MetricsMiddleware
+```
+dispatch(request, call_next)
+├── Records: REQUEST_COUNT before calling next
+├── Records: REQUEST_DURATION after calling next
+└── Returns: Response from next handler
+```
+
+### ErrorTrackingMiddleware
+```
+dispatch(request, call_next)
+├── Try: call_next(request)
+├── Except: Record APPLICATION_ERRORS
+└── Finally: Return response or re-raise exception
+```
+
+### metrics_endpoint()
+```
+Returns: Prometheus metrics in CONTENT_TYPE_LATEST format
+├── Generates: Latest metrics from prometheus_client
+└── Media type: CONTENT_TYPE_LATEST
+```
+

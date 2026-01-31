@@ -8,9 +8,15 @@
 2. `src/search/bm25.py` → BM25Searcher.search() (line 100)
 3. `src/search/vector.py` → VectorSearcher.search() (line 120)
 4. `src/langgraph/nodes.py` → filter_previous_node (line 570)
+5. `src/models/state.py` → SearchFilters TypedDict
 
 **Example: Add "spice level" filter**
 ```python
+# models/state.py - add to SearchFilters
+class SearchFilters(TypedDict, total=False):
+    # ... existing fields ...
+    spice_level: str  # Add new field
+
 # nodes.py - extract in query_rewriter
 if "spice" in user_input.lower():
     state["filters"]["spice_level"] = extract_spice_level(user_input)
@@ -30,6 +36,45 @@ if follow_up_type == "spice":
 
 ---
 
+### Adding a New Graph Query Type
+**Files to modify:**
+1. `src/search/graph.py` → Add new method to GraphSearcher class
+2. `src/langgraph/nodes.py` → Add to GRAPH_QUERY_PATTERNS dictionary
+3. `src/langgraph/nodes.py` → Update graph_search_node to handle new query type
+
+**Example: Add "cuisine combinations" query**
+```python
+# graph.py - add new method
+async def get_multi_cuisine_restaurants(
+    self,
+    cuisines: list[str],
+    city: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    # Implementation here
+    pass
+
+# nodes.py - add to GRAPH_QUERY_PATTERNS
+GRAPH_QUERY_PATTERNS = {
+    # ... existing patterns ...
+    "cuisine_combinations": [
+        r"restaurants with both (.+) and (.+)",
+        r"cuisine combinations",
+    ],
+}
+
+# nodes.py - update graph_search_node
+elif graph_query_type == "cuisine_combinations":
+    cuisines = extract_cuisines_from_filters(filters)
+    results = await searcher.get_multi_cuisine_restaurants(
+        cuisines=cuisines,
+        city=filters.get("city"),
+        limit=10,
+    )
+```
+
+---
+
 ### Debugging a Specific Request
 **Enable debug logging:**
 ```python
@@ -40,12 +85,18 @@ debug_mode: bool = True  # Log full state at each node
 **Check request state:**
 ```python
 # Add to any node
-logger.info("debug_state", 
+logger.info("debug_state",
     node_name="intent_detector",
     user_input=state["user_input"],
     intent=state["intent"],
     merged_results_count=len(state["merged_results"])
 )
+```
+
+**Monitor metrics during debugging:**
+```python
+# Check metrics endpoint
+curl http://localhost:8000/metrics
 ```
 
 **Common debug path:**
@@ -55,6 +106,7 @@ logger.info("debug_state",
 4. Verify search results exist → bm25_results, vector_results
 5. Check RRF merge output → merged_results
 6. Verify context selection → final_context size
+7. Check metrics collection → metrics endpoint
 
 ---
 
@@ -73,6 +125,11 @@ pytest tests/unit/test_conversation_nodes.py -v
 **With coverage:**
 ```bash
 pytest tests/unit/test_rrf.py tests/unit/test_conversation_nodes.py --cov=src --cov-report=term-missing
+```
+
+**Test with metrics:**
+```bash
+pytest tests/ --metrics-enabled
 ```
 
 **Current passing tests:** 70 total

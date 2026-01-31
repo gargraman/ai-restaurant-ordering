@@ -1,9 +1,9 @@
 # Neo4j Graph Integration Design
 
-> **Version**: 1.0
-> **Status**: Ready for Implementation
-> **Phase**: Phase 2 (as per SYSTEM_DESIGN.md roadmap)
-> **Last Updated**: 2026-01-29
+> **Version**: 2.0
+> **Status**: Implemented
+> **Phase**: Phase 5 (Completed)
+> **Last Updated**: 2026-01-31
 
 ---
 
@@ -17,7 +17,7 @@
 6. [API Changes](#6-api-changes)
 7. [Configuration](#7-configuration)
 8. [Testing Strategy](#8-testing-strategy)
-9. [Migration Plan](#9-migration-plan)
+9. [Monitoring & Metrics](#9-monitoring--metrics)
 
 ---
 
@@ -1898,6 +1898,87 @@ GRAPH_METRICS = {
 
 See `/docs/cypher_queries.md` for complete query catalog.
 
+## 9. Monitoring & Metrics
+
+### 9.1 Database Query Performance Metrics
+
+The graph search implementation includes comprehensive monitoring for Neo4j queries:
+
+```python
+# In src/search/graph.py methods
+async def get_restaurant_items(self, doc_id: str, ...):
+    start_time = time.time()
+
+    # Execute query
+    async with self.driver.session() as session:
+        result = await session.run(query, params)
+        records = await result.data()
+
+    query_duration = time.time() - start_time
+
+    # Record performance metrics
+    try:
+        db_collector = await get_db_metrics_collector()
+        await db_collector.record_query_performance(
+            query_type='neo4j_graph_restaurant_items',
+            table='MenuItem',
+            duration=query_duration,
+            is_slow=query_duration > 1.0,  # Mark as slow if over 1 second
+        )
+    except Exception as db_metric_error:
+        logger.warning("Failed to record query performance metrics", error=str(db_metric_error))
+
+    # Record search request metrics
+    record_search_request('graph', duration, len(records))
+```
+
+### 9.2 Available Metrics
+
+**Query Performance:**
+- `database_query_duration_seconds_bucket` - Duration histograms by query type
+- `database_slow_queries_total` - Count of slow queries by pattern
+- `database_query_error_rate` - Error rates by query type
+
+**Search Metrics:**
+- `search_requests_total` - Total graph search requests
+- `search_duration_seconds` - Duration histogram for graph searches
+- `graph_search_results_count` - Histogram of results returned
+- `zero_results_searches_total` - Count of searches returning no results
+
+### 9.3 Error Monitoring
+
+```python
+# Error handling with metrics in all graph methods
+try:
+    # Execute query
+    result = await session.run(query, params)
+    records = await result.data()
+except Exception as e:
+    # Record error metrics
+    try:
+        db_collector = await get_db_metrics_collector()
+        await db_collector.record_query_performance(
+            query_type='neo4j_graph_restaurant_items',
+            table='MenuItem',
+            duration=duration,
+            is_error=True
+        )
+    except Exception as db_metric_error:
+        logger.warning("Failed to record query error metrics", error=str(db_metric_error))
+
+    record_search_request('graph', duration, 0)  # Record failed search
+    logger.error("graph_restaurant_items_error", error=str(e), duration=duration)
+```
+
+### 9.4 Dashboard Recommendations
+
+For Grafana dashboards, create panels showing:
+1. Graph query latency percentiles (p50, p95, p99)
+2. Graph query error rate over time
+3. Number of slow graph queries (>1s) per minute
+4. Graph search results count distribution
+5. Zero-result graph searches trend
+
 ## Appendix B: Performance Benchmarks
 
 To be populated after implementation with:
@@ -1908,6 +1989,6 @@ To be populated after implementation with:
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 2.0
 **Author**: System Architect
 **Reviewers**: TBD

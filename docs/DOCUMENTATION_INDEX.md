@@ -7,17 +7,18 @@
 ## 📚 Main Documentation Files
 
 ### [CODE_FLOW.md](CODE_FLOW.md) - System Architecture & Execution Flows
-**90 sections | 607 lines | 17 KB**
+**120 sections | 852 lines | 25 KB**
 
 Comprehensive guide to how the system works end-to-end.
 
 **Start here for:**
 - Understanding the complete request flow
-- Learning how the 10-node LangGraph pipeline works
+- Learning how the 12-node LangGraph pipeline works
 - Session persistence and conversation handling
 - RRF ranking algorithm
 - Error handling patterns
 - Performance optimization opportunities
+- Monitoring and metrics collection
 
 **Key sections:**
 1. System Architecture Overview
@@ -33,16 +34,18 @@ Comprehensive guide to how the system works end-to-end.
 11. Performance Considerations
 12. Debugging Guide
 13. Architectural Rules
+14. Monitoring & Metrics Integration
 
 ---
 
 ### [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Quick Reference & How-To
-**29 sections | 351 lines | 8.2 KB**
+**35 sections | 409 lines | 9.5 KB**
 
 Practical, task-focused guide for daily development work.
 
 **Use for:**
 - Adding a new filter type (complete step-by-step example)
+- Adding a new graph query type
 - Debugging a specific request
 - Running tests (commands provided)
 - Modifying node logic
@@ -62,7 +65,7 @@ Practical, task-focused guide for daily development work.
 ---
 
 ### [FUNCTION_MAP.md](FUNCTION_MAP.md) - Complete Dependency & Function Map
-**38 sections | 467 lines | 14 KB**
+**45 sections | 601 lines | 18 KB**
 
 Function-level navigation and dependency tracking.
 
@@ -73,6 +76,7 @@ Function-level navigation and dependency tracking.
 - See all dependencies for each node
 - Understand data model structures
 - Review import structure and avoid circular dependencies
+- Explore monitoring and metrics functions
 
 **Structure:**
 1. Entry Points (HTTP API)
@@ -81,10 +85,12 @@ Function-level navigation and dependency tracking.
 4. Session Management
 5. LLM Integration
 6. Utility Functions
-7. Configuration
-8. Data Models
-9. Import Structure
-10. Testing Dependencies
+7. Monitoring & Metrics
+8. Middleware
+9. Configuration
+10. Data Models
+11. Import Structure
+12. Testing Dependencies
 
 ---
 

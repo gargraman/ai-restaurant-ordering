@@ -1,10 +1,10 @@
 # Documentation Summary
 
-**Created:** 3 comprehensive developer guides (1,425 lines total)
+**Created:** 3 comprehensive developer guides (1,862 lines total)
 
 ## 📄 Documents Overview
 
-### 1. CODE_FLOW.md (607 lines, 17KB)
+### 1. CODE_FLOW.md (852 lines, 25KB)
 **Purpose:** Complete system architecture & execution flows
 
 **Sections:**
@@ -13,10 +13,11 @@
 - Main Request Flow (`/chat/search` endpoint)
   - Step 1: Session Initialization
   - Step 2: Pipeline Entry
-- 10 Core Pipeline Nodes (detailed explanation for each)
+- 12 Core Pipeline Nodes (detailed explanation for each)
   - Input/Output specifications
   - Logic explanation
   - Code snippets where relevant
+  - Metrics recording for each node
 - 2 Optional Nodes (Graph Search, 3-way RRF)
 - Follow-Up Handling Flows (3 scenarios with execution traces)
 - Session Persistence (structure, updates)
@@ -29,23 +30,28 @@
 - Performance Considerations (latency breakdown)
 - Debugging Guide (enable logging, trace state)
 - Key Architectural Rules (5 critical principles)
+- Monitoring & Metrics Integration (Prometheus/Grafana setup)
 
 **Best For:**
 - Understanding complete request lifecycle
 - Learning how all pieces fit together
 - Architecture review before contributions
 - Performance optimization planning
+- Monitoring and metrics implementation
 
 ---
 
-### 2. DEVELOPER_GUIDE.md (351 lines, 8.2KB)
+### 2. DEVELOPER_GUIDE.md (409 lines, 9.5KB)
 **Purpose:** Quick reference for common development tasks
 
 **Sections:**
 - File Map by Task (quick lookup for what to modify)
 - Adding Support for New Filter Type (step-by-step example)
+- Adding a New Graph Query Type (step-by-step example)
 - Debugging a Specific Request (common debug path)
+- Monitor metrics during debugging
 - Running Tests (commands & status)
+- Test with metrics enabled
 - Modifying Node Logic (template + rules)
 - Session Management (load, save, update operations)
 - Search Integration (BM25, Vector, Hybrid examples)
@@ -62,10 +68,11 @@
 - Quick problem solving
 - Adding new features
 - Copy-paste code examples
+- Understanding metrics collection
 
 ---
 
-### 3. FUNCTION_MAP.md (467 lines, 14KB)
+### 3. FUNCTION_MAP.md (601 lines, 18KB)
 **Purpose:** Complete dependency map & function signatures
 
 **Sections:**
@@ -81,6 +88,8 @@
 - LLM Integration (_get_llm, usage patterns)
 - Utility Functions (_estimate_tokens, _format_context_item)
 - Configuration Sources (Settings class)
+- Monitoring & Metrics (metric definitions and recording functions)
+- Middleware (metrics and error tracking middleware)
 - Data Models (GraphState, IndexDocument, SearchResult)
 - Import Structure (shows dependencies, avoids circular imports)
 - Testing Dependencies (mocks & fixtures)
