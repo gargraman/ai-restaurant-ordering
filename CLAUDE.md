@@ -10,10 +10,10 @@ Conversational Hybrid Search & RAG System for Catering Menus. Python 3.11+ with 
 
 ```bash
 # Start infrastructure (OpenSearch, PostgreSQL+pgvector, Redis, Neo4j)
-docker-compose -f docker/docker-compose.yml up -d
+docker-compose -f deployment/docker-compose.yml up -d
 
 # Start with optional GUI tools (Redis Commander, OpenSearch Dashboards)
-docker-compose -f docker/docker-compose.yml --profile tools up -d
+docker-compose -f deployment/docker-compose.yml --profile tools up -d
 
 # Install dependencies
 pip install -e ".[dev]"

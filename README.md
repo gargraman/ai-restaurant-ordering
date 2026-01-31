@@ -6,7 +6,7 @@ Conversational Hybrid Search & RAG System for Catering Menus.
 
 ```bash
 # Start infrastructure
-docker-compose -f docker/docker-compose.yml up -d
+docker-compose -f deployment/docker-compose.yml up -d
 
 # Install dependencies
 pip install -e ".[dev]"

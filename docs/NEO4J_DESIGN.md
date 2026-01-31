@@ -1616,7 +1616,7 @@ class Settings(BaseSettings):
 ### 7.2 Docker Compose Addition
 
 ```yaml
-# docker/docker-compose.yml - add Neo4j service
+# deployment/docker-compose.yml - add Neo4j service
 
 services:
   # ... existing services ...

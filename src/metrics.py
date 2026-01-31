@@ -244,20 +244,32 @@ def record_llm_call(model: str, operation: str, duration: float, input_tokens: i
     # Record call count
     LLM_CALLS_TOTAL.labels(model=model, operation=operation).inc()
 
-    # Record token usage
-    if input_tokens > 0:
-        LLM_TOKEN_USAGE_INPUT.labels(model=model).inc(input_tokens)
+    # Handle cases where input_tokens or output_tokens might be mocked objects
+    try:
+        input_tokens_val = int(input_tokens) if input_tokens is not None else 0
+    except (ValueError, TypeError):
+        input_tokens_val = 0
 
-    if output_tokens > 0:
-        LLM_TOKEN_USAGE_OUTPUT.labels(model=model).inc(output_tokens)
+    try:
+        output_tokens_val = int(output_tokens) if output_tokens is not None else 0
+    except (ValueError, TypeError):
+        output_tokens_val = 0
+
+    # Record token usage
+    if input_tokens_val > 0:
+        LLM_TOKEN_USAGE_INPUT.labels(model=model).inc(input_tokens_val)
+
+    if output_tokens_val > 0:
+        LLM_TOKEN_USAGE_OUTPUT.labels(model=model).inc(output_tokens_val)
 
     # Calculate and record cost (using example pricing)
     # Note: Actual pricing may vary
-    input_cost = (input_tokens / 1_000_000) * 0.01  # $0.01 per million input tokens for GPT-4
-    output_cost = (output_tokens / 1_000_000) * 0.03  # $0.03 per million output tokens for GPT-4
+    input_cost = (input_tokens_val / 1_000_000) * 0.01  # $0.01 per million input tokens for GPT-4
+    output_cost = (output_tokens_val / 1_000_000) * 0.03  # $0.03 per million output tokens for GPT-4
 
-    LLM_COST_USD.labels(model=model).inc(input_cost + output_cost)
-    FEATURE_COST_USD_TOTAL.labels(feature=operation, model=model).inc(input_cost + output_cost)
+    total_cost = input_cost + output_cost
+    LLM_COST_USD.labels(model=model).inc(total_cost)
+    FEATURE_COST_USD_TOTAL.labels(feature=operation, model=model).inc(total_cost)
 
 
 def record_search_request(search_type: str, duration: float, result_count: int, relevance_score: float = None):
