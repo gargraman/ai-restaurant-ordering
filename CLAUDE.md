@@ -24,6 +24,9 @@ pytest tests/ -v --cov=src
 # Run single test file
 pytest tests/unit/test_rrf.py -v
 
+# Run single test
+pytest tests/unit/test_conversation_nodes.py::TestContextResolverNode::test_loads_session_context -v
+
 # Format and lint
 ruff check . --fix
 
@@ -33,11 +36,12 @@ mypy src/
 # Start API server
 uvicorn src.api.main:app --reload
 
-# Run data ingestion
+# Data ingestion (OpenSearch + pgvector)
 python scripts/run_ingestion.py data/sample/ --skip-embeddings
-
-# Full ingestion with embeddings
 python scripts/run_ingestion.py <source> --recreate --batch-size 1000
+
+# Neo4j graph ingestion
+python scripts/ingest_neo4j.py data/sample/ --clear --create-relationships
 ```
 
 ## Architecture
@@ -63,7 +67,7 @@ User Input → Context Resolver (Redis session) → Intent Detector
   - `nodes.py` - 12 node implementations:
     - `context_resolver_node` - Load session from Redis
     - `intent_detector_node` - Classify intent (search/filter/clarify/compare)
-    - `query_rewriter_node` - Entity extraction and query expansion
+    - `query_rewriter_node` - Entity extraction, query expansion, graph query detection
     - `bm25_search_node` - OpenSearch lexical search
     - `vector_search_node` - pgvector semantic search
     - `rrf_merge_node` - 2-way RRF fusion (BM25 + vector)
@@ -81,7 +85,9 @@ User Input → Context Resolver (Redis session) → Intent Detector
   - `graph.py` - Neo4j graph search (restaurant_items, similar_restaurants, pairings, catering_packages)
   - `hybrid.py` - RRF fusion algorithm
 
-- **`src/ingestion/`** - Data pipeline: JSON → IndexDocument → embeddings → OpenSearch + pgvector
+- **`src/ingestion/`** - Data pipeline
+  - `pipeline.py` - Orchestration: JSON → IndexDocument → embeddings → OpenSearch + pgvector
+  - `neo4j_indexer.py` - Neo4j ingestion with relationship creation (PAIRS_WITH, SIMILAR_TO)
 
 - **`src/session/manager.py`** - Redis-based session storage (entities, conversation history, previous results)
 
@@ -126,10 +132,14 @@ enable_3way_rrf: bool = False       # Enable 3-way RRF fusion (BM25 + vector + g
 
 ### Graph Search Query Types
 
-- `restaurant_items` - Other items from same restaurant
-- `similar_restaurants` - Find similar restaurants nearby (shared cuisines, proximity)
-- `pairing` - Items that pair well together (PAIRS_WITH relationships)
-- `catering_packages` - Complete package suggestions (appetizer + entree + dessert)
+Detected via regex patterns in `query_rewriter_node`:
+
+| Query Type | Trigger Patterns | Example |
+|------------|------------------|---------|
+| `restaurant_items` | "more from this restaurant", "what else do they have" | "Show me more from this restaurant" |
+| `similar_restaurants` | "similar restaurants", "restaurants like this" | "Similar restaurants nearby" |
+| `pairing` | "pairs with", "goes with", "sides for" | "What pairs well with this?" |
+| `catering_packages` | "catering package", "full meal for" | "Complete catering package for 50" |
 
 ## Development Notes
 
@@ -137,4 +147,4 @@ enable_3way_rrf: bool = False       # Enable 3-way RRF fusion (BM25 + vector + g
 - Structured logging with structlog
 - Tests use pytest-asyncio with `asyncio_mode = "auto"`
 - Configuration via environment variables (see `.env.example`)
-- Python 3.8+ compatible (avoid parenthesized context managers in tests)
+- Python 3.11+ required (uses modern type hints like `list[str]`, `dict[str, Any]`)

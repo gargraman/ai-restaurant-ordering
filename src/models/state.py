@@ -27,6 +27,7 @@ class SearchFilters(TypedDict, total=False):
 
 IntentType = Literal["search", "filter", "clarify", "compare"]
 FollowUpType = Literal["price", "serving", "dietary", "location", "scope"]
+GraphQueryType = Literal["restaurant_items", "similar_restaurants", "pairing", "catering_packages"]
 
 
 class GraphState(TypedDict):
@@ -48,10 +49,17 @@ class GraphState(TypedDict):
     filters: SearchFilters
     expanded_query: str
 
+    # Graph search
+    requires_graph: bool
+    graph_query_type: GraphQueryType | None
+    reference_doc_id: str | None
+    reference_restaurant_id: str | None
+
     # Retrieval
     candidate_doc_ids: list[str]
     bm25_results: list[dict[str, Any]]
     vector_results: list[dict[str, Any]]
+    graph_results: list[dict[str, Any]]
 
     # Fusion
     merged_results: list[dict[str, Any]]

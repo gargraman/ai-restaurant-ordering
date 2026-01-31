@@ -3,6 +3,7 @@
 import asyncio
 import json
 import math
+import re
 from collections import defaultdict
 
 import structlog
@@ -53,6 +54,59 @@ class EntityExtractionResult(BaseModel):
 
 logger = structlog.get_logger()
 settings = get_settings()
+
+# Graph query detection patterns
+GRAPH_QUERY_PATTERNS = {
+    "restaurant_items": [
+        r"more from (this|the same) restaurant",
+        r"other items? from",
+        r"what else do(es)? (this|they) (have|offer)",
+        r"show me (their|the) (full )?menu",
+    ],
+    "similar_restaurants": [
+        r"similar restaurants?",
+        r"restaurants? like (this|these)",
+        r"other restaurants? (nearby|in the area)",
+        r"alternatives? to (this|these)",
+    ],
+    "pairing": [
+        r"(what |something to )?pairs? (well )?with",
+        r"(what |something that )?goes? (well )?(with|together)",
+        r"side(s)? (for|to go with)",
+        r"complement(s|ary)?",
+    ],
+    "catering_packages": [
+        r"(complete |full )?catering package",
+        r"package (for|that serves)",
+        r"(appetizer|entree|dessert).*(appetizer|entree|dessert)",
+        r"full meal for",
+    ],
+}
+
+
+def _detect_graph_query(user_input: str, has_previous_results: bool) -> tuple[bool, str | None]:
+    """Detect if the query requires graph search.
+
+    Args:
+        user_input: The user's query
+        has_previous_results: Whether there are previous results to reference
+
+    Returns:
+        Tuple of (requires_graph, graph_query_type)
+    """
+    text = user_input.lower()
+
+    for query_type, patterns in GRAPH_QUERY_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                # restaurant_items and pairing require previous results
+                if query_type in ("restaurant_items", "pairing", "similar_restaurants"):
+                    if has_previous_results:
+                        return True, query_type
+                else:
+                    return True, query_type
+
+    return False, None
 
 # Singleton storage for searchers and session manager
 _bm25_searcher: BM25Searcher | None = None
@@ -225,14 +279,38 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     """Extract entities and expand query for search.
 
     This node:
-    1. Extracts structured entities (city, cuisine, dietary, etc.)
-    2. Merges with existing session entities
-    3. Expands the query for better BM25 matching
+    1. Detects if query requires graph search
+    2. Extracts structured entities (city, cuisine, dietary, etc.)
+    3. Merges with existing session entities
+    4. Expands the query for better BM25 matching
     """
     logger.info("query_rewriter_node", user_input=state["user_input"])
 
     llm = _get_llm()
     current_filters = state.get("filters", {})
+
+    # Step 0: Detect graph query type
+    has_previous = bool(state.get("candidate_doc_ids") or state.get("merged_results"))
+    requires_graph, graph_query_type = _detect_graph_query(state["user_input"], has_previous)
+
+    if requires_graph and settings.enable_graph_search:
+        state["requires_graph"] = True
+        state["graph_query_type"] = graph_query_type
+
+        # Set reference IDs from previous results
+        previous_results = state.get("merged_results", [])
+        if previous_results:
+            state["reference_doc_id"] = previous_results[0].get("doc_id")
+            state["reference_restaurant_id"] = previous_results[0].get("restaurant_id")
+
+        logger.info(
+            "graph_query_detected",
+            query_type=graph_query_type,
+            reference_doc_id=state.get("reference_doc_id"),
+        )
+    else:
+        state["requires_graph"] = False
+        state["graph_query_type"] = None
 
     # Step 1: Entity extraction
     entity_prompt = ENTITY_EXTRACTION_PROMPT.format(
@@ -737,7 +815,7 @@ async def graph_search_node(state: GraphState) -> GraphState:
 
         elif graph_query_type == "pairing" and reference_doc_id:
             # "What pairs well with this item"
-            results = await searcher.get_item_pairs(
+            results = await searcher.get_pairings(
                 doc_id=reference_doc_id,
                 limit=10,
             )

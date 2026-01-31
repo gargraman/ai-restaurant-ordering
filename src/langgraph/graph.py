@@ -176,7 +176,16 @@ def create_search_graph() -> StateGraph:
     # For simplicity, we run searches sequentially here
     graph.add_edge("query_rewriter_node", "bm25_search_node")
     graph.add_edge("bm25_search_node", "vector_search_node")
-    graph.add_edge("vector_search_node", "rrf_merge_node")
+
+    # Conditional routing to 2-way or 3-way RRF based on graph results
+    graph.add_conditional_edges(
+        "vector_search_node",
+        route_to_merge_node,
+        {
+            "rrf_merge_node": "rrf_merge_node",
+            "rrf_merge_3way_node": "rrf_merge_3way_node",
+        },
+    )
 
     # After merge, select context
     graph.add_edge("rrf_merge_node", "context_selector_node")
