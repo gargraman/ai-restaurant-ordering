@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -8,6 +9,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import make_asgi_app
 
 from src.config import get_settings
 from src.models.api import (
@@ -22,6 +24,11 @@ from src.session.manager import SessionManager
 from src.search.hybrid import HybridSearcher
 from src.langgraph.graph import get_search_pipeline
 from src.langgraph.nodes import set_session_manager
+from src.monitoring.middleware import MetricsMiddleware, ErrorTrackingMiddleware, metrics_endpoint
+from src.monitoring.system_metrics import system_metrics_collector
+from src.monitoring.database_monitor import stop_db_metrics_collector
+from src.monitoring.tracing import setup_tracing
+from src.metrics import increment_active_sessions, decrement_active_sessions, collect_system_metrics
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -46,6 +53,15 @@ async def lifespan(app: FastAPI):
     hybrid_searcher = HybridSearcher()
     await hybrid_searcher.vector_searcher.connect()
 
+    # Start system metrics collection
+    system_metrics_collector.start()
+
+    # Start system metrics collection task
+    system_metrics_task = asyncio.create_task(collect_system_metrics())
+
+    # Database metrics collector is started when vector searcher connects
+    # No need to start it separately here
+
     yield
 
     # Cleanup
@@ -54,6 +70,15 @@ async def lifespan(app: FastAPI):
         await session_manager.close()
     if hybrid_searcher:
         await hybrid_searcher.close()
+
+    # Stop system metrics collection
+    system_metrics_collector.stop()
+
+    # Cancel system metrics collection task
+    system_metrics_task.cancel()
+
+    # Stop database metrics collection if initialized
+    await stop_db_metrics_collector()
 
 
 def create_app() -> FastAPI:
@@ -64,6 +89,13 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    # Tracing (Phase 2)
+    setup_tracing(app)
+
+    # Add monitoring middleware
+    app.add_middleware(MetricsMiddleware)
+    app.add_middleware(ErrorTrackingMiddleware)
 
     # CORS middleware
     app.add_middleware(
@@ -101,6 +133,12 @@ def create_app() -> FastAPI:
             "timestamp": datetime.utcnow().isoformat(),
             "version": "0.1.0",
         }
+
+    # Metrics endpoint
+    @app.get("/metrics")
+    async def metrics():
+        """Prometheus metrics endpoint."""
+        return metrics_endpoint()
 
     # Chat search endpoint
     @app.post("/chat/search", response_model=SearchResponse)
@@ -233,6 +271,11 @@ def create_app() -> FastAPI:
             doc_id=feedback.doc_id,
             rating=feedback.rating,
         )
+
+        # Record user feedback in metrics
+        from src.metrics import record_user_feedback
+        record_user_feedback(result_type="search_result", rating=feedback.rating)
+
         # In production, this would be stored for model improvement
         return {"status": "received", "doc_id": feedback.doc_id, "rating": feedback.rating}
 

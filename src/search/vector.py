@@ -1,5 +1,6 @@
 """Vector similarity search via pgvector."""
 
+import time
 from typing import Any
 
 import structlog
@@ -8,6 +9,7 @@ import asyncpg
 from src.config import get_settings
 from src.models.state import SearchFilters
 from src.ingestion.embeddings import EmbeddingGenerator
+from src.metrics import record_search_request, record_database_query_performance
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -30,6 +32,10 @@ class VectorSearcher:
         if self.pool is None:
             self.pool = await asyncpg.create_pool(self._dsn, min_size=2, max_size=10)
             logger.info("vector_searcher_connected")
+
+            # Initialize database metrics collector
+            from src.monitoring.database_monitor import set_db_metrics_collector
+            await set_db_metrics_collector(self.pool)
 
     async def close(self) -> None:
         """Close the connection pool."""
@@ -61,29 +67,32 @@ class VectorSearcher:
         if self.pool is None:
             await self.connect()
 
-        # Generate query embedding
-        embedding = await self.embedding_generator.generate_query_embedding(query)
-
-        # Build WHERE clause
-        conditions, params = self._build_conditions(filters, embedding, top_k)
-
-        query_sql = f"""
-            SELECT
-                doc_id,
-                1 - (embedding <=> $1) as score,
-                restaurant_id,
-                city,
-                base_price,
-                serves_max
-            FROM menu_embeddings
-            WHERE {conditions}
-            ORDER BY embedding <=> $1
-            LIMIT ${len(params)}
-        """
-
+        start_time = time.time()
         try:
+            # Generate query embedding
+            embedding = await self.embedding_generator.generate_query_embedding(query)
+
+            # Build WHERE clause
+            conditions, params = self._build_conditions(filters, embedding, top_k)
+
+            query_sql = f"""
+                SELECT
+                    doc_id,
+                    1 - (embedding <=> $1) as score,
+                    restaurant_id,
+                    city,
+                    base_price,
+                    serves_max
+                FROM menu_embeddings
+                WHERE {conditions}
+                ORDER BY embedding <=> $1
+                LIMIT ${len(params)}
+            """
+
+            query_start_time = time.time()
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch(query_sql, *params)
+            query_duration = time.time() - query_start_time
 
             results = [
                 {
@@ -97,11 +106,35 @@ class VectorSearcher:
                 for row in rows
             ]
 
-            logger.info("vector_search_complete", result_count=len(results))
+            duration = time.time() - start_time
+
+            # Record query performance metrics
+            record_database_query_performance(
+                database='postgres',
+                query_type='vector_similarity',
+                table='menu_embeddings',
+                duration=query_duration,
+                is_error=False
+            )
+
+            record_search_request('vector', duration, len(results))
+
+            logger.info("vector_search_complete", result_count=len(results), duration=duration)
             return results
 
         except Exception as e:
-            logger.error("vector_search_error", error=str(e))
+            duration = time.time() - start_time
+            # Record query error metrics
+            record_database_query_performance(
+                database='postgres',
+                query_type='vector_similarity',
+                table='menu_embeddings',
+                duration=duration,
+                is_error=True
+            )
+
+            record_search_request('vector', duration, 0)  # Record failed search
+            logger.error("vector_search_error", error=str(e), duration=duration)
             return []
 
     def _build_conditions(
@@ -164,9 +197,11 @@ class VectorSearcher:
         if self.pool is None:
             await self.connect()
 
+        start_time = time.time()
         embedding = await self.embedding_generator.generate_query_embedding(query)
 
         try:
+            query_start_time = time.time()
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
@@ -186,8 +221,9 @@ class VectorSearcher:
                     filters.get("dietary_labels"),
                     top_k,
                 )
+            query_duration = time.time() - query_start_time
 
-            return [
+            results = [
                 {
                     "doc_id": str(row["doc_id"]),
                     "score": float(row["score"]),
@@ -199,6 +235,29 @@ class VectorSearcher:
                 for row in rows
             ]
 
+            duration = time.time() - start_time
+
+            # Record query performance metrics
+            record_database_query_performance(
+                database='postgres',
+                query_type='vector_similarity_function',
+                table='menu_embeddings',
+                duration=query_duration,
+                is_error=False
+            )
+
+            return results
+
         except Exception as e:
+            duration = time.time() - start_time
+            # Record query error metrics
+            record_database_query_performance(
+                database='postgres',
+                query_type='vector_similarity_function',
+                table='menu_embeddings',
+                duration=duration,
+                is_error=True
+            )
+
             logger.error("vector_search_function_error", error=str(e))
             return []

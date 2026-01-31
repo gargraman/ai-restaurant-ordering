@@ -1,12 +1,15 @@
-"""Neo4j graph search implementation."""
+"""Neo4j graph search implementation with metrics."""
 
 import asyncio
+import time
 from typing import Any
 
 import structlog
 from neo4j import AsyncGraphDatabase, AsyncDriver
 
 from src.config import get_settings
+from src.metrics import record_search_request
+from src.monitoring.database_monitor import get_db_metrics_collector
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -74,6 +77,7 @@ class GraphSearcher:
         Returns:
             List of menu items from the same restaurant
         """
+        start_time = time.time()
         filters = filters or {}
 
         query = """
@@ -107,26 +111,63 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(
-                query,
-                {
-                    "doc_id": doc_id,
-                    "price_max": filters.get("price_max"),
-                    "serves_min": filters.get("serves_min"),
-                    "dietary_labels": filters.get("dietary_labels"),
-                    "limit": limit,
-                },
+        try:
+            query_start_time = time.time()
+            async with self.driver.session() as session:
+                result = await session.run(
+                    query,
+                    {
+                        "doc_id": doc_id,
+                        "price_max": filters.get("price_max"),
+                        "serves_min": filters.get("serves_min"),
+                        "dietary_labels": filters.get("dietary_labels"),
+                        "limit": limit,
+                    },
+                )
+                records = await result.data()
+            query_duration = time.time() - query_start_time
+
+            duration = time.time() - start_time
+
+            # Record query performance metrics for Neo4j (treating as database query)
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_restaurant_items',
+                    table='MenuItem',
+                    duration=query_duration,
+                    is_slow=query_duration > 1.0,  # Mark as slow if over 1 second
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query performance metrics", error=str(db_metric_error))
+
+            record_search_request('graph', duration, len(records))
+
+            logger.info(
+                "graph_restaurant_items_query",
+                doc_id=doc_id,
+                result_count=len(records),
+                duration=duration,
             )
-            records = await result.data()
 
-        logger.info(
-            "graph_restaurant_items_query",
-            doc_id=doc_id,
-            result_count=len(records),
-        )
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            # Record query error metrics
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_restaurant_items',
+                    table='MenuItem',
+                    duration=duration,
+                    is_error=True
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query error metrics", error=str(db_metric_error))
 
-        return records
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_restaurant_items_error", error=str(e), duration=duration)
+            return []
 
     async def get_similar_restaurants(
         self,
@@ -153,6 +194,8 @@ class GraphSearcher:
         Returns:
             List of similar restaurants with sample items
         """
+        start_time = time.time()
+
         query = """
         MATCH (r:Restaurant {restaurant_id: $restaurant_id})
 
@@ -190,25 +233,62 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(
-                query,
-                {
-                    "restaurant_id": restaurant_id,
-                    "city": city,
-                    "max_distance_km": max_distance_km,
-                    "limit": limit,
-                },
+        try:
+            query_start_time = time.time()
+            async with self.driver.session() as session:
+                result = await session.run(
+                    query,
+                    {
+                        "restaurant_id": restaurant_id,
+                        "city": city,
+                        "max_distance_km": max_distance_km,
+                        "limit": limit,
+                    },
+                )
+                records = await result.data()
+            query_duration = time.time() - query_start_time
+
+            duration = time.time() - start_time
+
+            # Record query performance metrics for Neo4j (treating as database query)
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_similar_restaurants',
+                    table='Restaurant',
+                    duration=query_duration,
+                    is_slow=query_duration > 1.0,  # Mark as slow if over 1 second
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query performance metrics", error=str(db_metric_error))
+
+            record_search_request('graph', duration, len(records))
+
+            logger.info(
+                "graph_similar_restaurants_query",
+                restaurant_id=restaurant_id,
+                result_count=len(records),
+                duration=duration,
             )
-            records = await result.data()
 
-        logger.info(
-            "graph_similar_restaurants_query",
-            restaurant_id=restaurant_id,
-            result_count=len(records),
-        )
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            # Record query error metrics
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_similar_restaurants',
+                    table='Restaurant',
+                    duration=duration,
+                    is_error=True
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query error metrics", error=str(db_metric_error))
 
-        return records
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_similar_restaurants_error", error=str(e), duration=duration)
+            return []
 
     async def get_pairings(
         self,
@@ -229,6 +309,8 @@ class GraphSearcher:
         Returns:
             List of items that pair well with the specified item
         """
+        start_time = time.time()
+
         # Query for direct pairings first
         direct_query = """
         MATCH (i:MenuItem {doc_id: $doc_id})
@@ -252,65 +334,120 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(direct_query, {"doc_id": doc_id, "limit": limit})
-            direct_pairings = await result.data()
+        try:
+            query_start_time = time.time()
+            async with self.driver.session() as session:
+                result = await session.run(direct_query, {"doc_id": doc_id, "limit": limit})
+                direct_pairings = await result.data()
+            query_duration = time.time() - query_start_time
 
-        # If we have enough direct pairings, return them
-        if len(direct_pairings) >= limit:
+            # If we have enough direct pairings, return them
+            if len(direct_pairings) >= limit:
+                duration = time.time() - start_time
+
+                # Record query performance metrics for Neo4j (treating as database query)
+                try:
+                    db_collector = await get_db_metrics_collector()
+                    await db_collector.record_query_performance(
+                        query_type='neo4j_graph_pairings_direct',
+                        table='MenuItem',
+                        duration=query_duration,
+                        is_slow=query_duration > 1.0,  # Mark as slow if over 1 second
+                    )
+                except Exception as db_metric_error:
+                    logger.warning("Failed to record query performance metrics", error=str(db_metric_error))
+
+                record_search_request('graph', duration, len(direct_pairings))
+
+                logger.info(
+                    "graph_pairings_query",
+                    doc_id=doc_id,
+                    result_count=len(direct_pairings),
+                    source="direct",
+                    duration=duration,
+                )
+                return direct_pairings
+
+            # Otherwise, supplement with same-group items
+            remaining = limit - len(direct_pairings)
+            existing_ids = [p["doc_id"] for p in direct_pairings] + [doc_id]
+
+            fallback_query = """
+            MATCH (i:MenuItem {doc_id: $doc_id})
+            MATCH (i)<-[:CONTAINS]-(g:MenuGroup)-[:CONTAINS]->(sibling:MenuItem)
+            WHERE NOT sibling.doc_id IN $existing_ids
+
+            MATCH (sibling)<-[:CONTAINS]-(g)<-[:HAS_GROUP]-(:Menu)<-[:HAS_MENU]-(r:Restaurant)
+
+            RETURN sibling.doc_id AS doc_id,
+                   sibling.name AS item_name,
+                   sibling.description AS item_description,
+                   sibling.display_price AS display_price,
+                   sibling.serves_max AS serves_max,
+                   sibling.dietary_labels AS dietary_labels,
+                   r.name AS restaurant_name,
+                   r.restaurant_id AS restaurant_id,
+                   r.city AS city,
+                   r.state AS state,
+                   g.name AS menu_group_name,
+                   0.5 AS pairing_confidence,
+                   'same_group' AS pairing_source
+            LIMIT $remaining
+            """
+
+            fallback_start_time = time.time()
+            async with self.driver.session() as session:
+                result = await session.run(
+                    fallback_query,
+                    {"doc_id": doc_id, "existing_ids": existing_ids, "remaining": remaining},
+                )
+                fallback_pairings = await result.data()
+            fallback_duration = time.time() - fallback_start_time
+
+            all_pairings = direct_pairings + fallback_pairings
+            duration = time.time() - start_time
+
+            # Record query performance metrics for Neo4j (treating as database query)
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_pairings_fallback',
+                    table='MenuItem',
+                    duration=fallback_duration,
+                    is_slow=fallback_duration > 1.0,  # Mark as slow if over 1 second
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query performance metrics", error=str(db_metric_error))
+
+            record_search_request('graph', duration, len(all_pairings))
+
             logger.info(
                 "graph_pairings_query",
                 doc_id=doc_id,
-                result_count=len(direct_pairings),
-                source="direct",
+                result_count=len(all_pairings),
+                direct_count=len(direct_pairings),
+                fallback_count=len(fallback_pairings),
+                duration=duration,
             )
-            return direct_pairings
 
-        # Otherwise, supplement with same-group items
-        remaining = limit - len(direct_pairings)
-        existing_ids = [p["doc_id"] for p in direct_pairings] + [doc_id]
+            return all_pairings
+        except Exception as e:
+            duration = time.time() - start_time
+            # Record query error metrics
+            try:
+                db_collector = await get_db_metrics_collector()
+                await db_collector.record_query_performance(
+                    query_type='neo4j_graph_pairings',
+                    table='MenuItem',
+                    duration=duration,
+                    is_error=True
+                )
+            except Exception as db_metric_error:
+                logger.warning("Failed to record query error metrics", error=str(db_metric_error))
 
-        fallback_query = """
-        MATCH (i:MenuItem {doc_id: $doc_id})
-        MATCH (i)<-[:CONTAINS]-(g:MenuGroup)-[:CONTAINS]->(sibling:MenuItem)
-        WHERE NOT sibling.doc_id IN $existing_ids
-
-        MATCH (sibling)<-[:CONTAINS]-(g)<-[:HAS_GROUP]-(:Menu)<-[:HAS_MENU]-(r:Restaurant)
-
-        RETURN sibling.doc_id AS doc_id,
-               sibling.name AS item_name,
-               sibling.description AS item_description,
-               sibling.display_price AS display_price,
-               sibling.serves_max AS serves_max,
-               sibling.dietary_labels AS dietary_labels,
-               r.name AS restaurant_name,
-               r.restaurant_id AS restaurant_id,
-               r.city AS city,
-               r.state AS state,
-               g.name AS menu_group_name,
-               0.5 AS pairing_confidence,
-               'same_group' AS pairing_source
-        LIMIT $remaining
-        """
-
-        async with self.driver.session() as session:
-            result = await session.run(
-                fallback_query,
-                {"doc_id": doc_id, "existing_ids": existing_ids, "remaining": remaining},
-            )
-            fallback_pairings = await result.data()
-
-        all_pairings = direct_pairings + fallback_pairings
-
-        logger.info(
-            "graph_pairings_query",
-            doc_id=doc_id,
-            result_count=len(all_pairings),
-            direct_count=len(direct_pairings),
-            fallback_count=len(fallback_pairings),
-        )
-
-        return all_pairings
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_pairings_error", error=str(e), duration=duration)
+            return []
 
     async def get_multi_cuisine_restaurants(
         self,
@@ -332,6 +469,8 @@ class GraphSearcher:
         """
         if not cuisines:
             return []
+
+        start_time = time.time()
 
         query = """
         MATCH (r:Restaurant)
@@ -357,25 +496,35 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(
-                query,
-                {
-                    "required_cuisines": cuisines,
-                    "city": city,
-                    "limit": limit,
-                },
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(
+                    query,
+                    {
+                        "required_cuisines": cuisines,
+                        "city": city,
+                        "limit": limit,
+                    },
+                )
+                records = await result.data()
+
+            duration = time.time() - start_time
+            record_search_request('graph', duration, len(records))
+
+            logger.info(
+                "graph_multi_cuisine_query",
+                cuisines=cuisines,
+                city=city,
+                result_count=len(records),
+                duration=duration,
             )
-            records = await result.data()
 
-        logger.info(
-            "graph_multi_cuisine_query",
-            cuisines=cuisines,
-            city=city,
-            result_count=len(records),
-        )
-
-        return records
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_multi_cuisine_error", error=str(e), duration=duration)
+            return []
 
     async def get_catering_packages(
         self,
@@ -401,6 +550,8 @@ class GraphSearcher:
         Returns:
             List of complete package suggestions
         """
+        start_time = time.time()
+
         query = """
         MATCH (r:Restaurant)-[:HAS_MENU]->(m:Menu)
         WHERE ($city IS NULL OR r.city = $city)
@@ -473,28 +624,38 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(
-                query,
-                {
-                    "party_size": party_size,
-                    "budget": budget,
-                    "city": city,
-                    "cuisines": cuisines,
-                    "dietary": dietary_requirements,
-                    "limit": limit,
-                },
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(
+                    query,
+                    {
+                        "party_size": party_size,
+                        "budget": budget,
+                        "city": city,
+                        "cuisines": cuisines,
+                        "dietary": dietary_requirements,
+                        "limit": limit,
+                    },
+                )
+                records = await result.data()
+
+            duration = time.time() - start_time
+            record_search_request('graph', duration, len(records))
+
+            logger.info(
+                "graph_catering_packages_query",
+                party_size=party_size,
+                budget=budget,
+                result_count=len(records),
+                duration=duration,
             )
-            records = await result.data()
 
-        logger.info(
-            "graph_catering_packages_query",
-            party_size=party_size,
-            budget=budget,
-            result_count=len(records),
-        )
-
-        return records
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_catering_packages_error", error=str(e), duration=duration)
+            return []
 
     async def get_menu_structure(
         self,
@@ -510,6 +671,8 @@ class GraphSearcher:
         Returns:
             Hierarchical menu structure or None if not found
         """
+        start_time = time.time()
+
         query = """
         MATCH (r:Restaurant {restaurant_id: $restaurant_id})
 
@@ -564,14 +727,37 @@ class GraphSearcher:
                menus
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(query, {"restaurant_id": restaurant_id})
-            record = await result.single()
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(query, {"restaurant_id": restaurant_id})
+                record = await result.single()
 
-        if not record:
+            duration = time.time() - start_time
+            result_count = 1 if record else 0
+            record_search_request('graph', duration, result_count)
+
+            if not record:
+                logger.info(
+                    "graph_menu_structure_query",
+                    restaurant_id=restaurant_id,
+                    result_count=0,
+                    duration=duration,
+                )
+                return None
+
+            result_dict = dict(record)
+            logger.info(
+                "graph_menu_structure_query",
+                restaurant_id=restaurant_id,
+                result_count=1,
+                duration=duration,
+            )
+            return result_dict
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_menu_structure_error", error=str(e), duration=duration)
             return None
-
-        return dict(record)
 
     async def get_related_items(
         self,
@@ -593,30 +779,51 @@ class GraphSearcher:
         Returns:
             List of related items
         """
-        if relation_type == "same_restaurant":
-            return await self.get_restaurant_items(doc_id, limit=limit)
-        elif relation_type == "pairing":
-            return await self.get_pairings(doc_id, limit=limit)
-        elif relation_type == "same_group":
-            return await self._get_same_group_items(doc_id, limit)
-        elif relation_type == "all":
-            # Combine different relation types
-            tasks = [
-                self.get_pairings(doc_id, limit=limit // 2),
-                self._get_same_group_items(doc_id, limit=limit // 2),
-            ]
-            results = await asyncio.gather(*tasks)
-            combined = results[0] + results[1]
-            # Deduplicate by doc_id
-            seen = set()
-            unique = []
-            for item in combined:
-                if item["doc_id"] not in seen:
-                    seen.add(item["doc_id"])
-                    unique.append(item)
-            return unique[:limit]
-        else:
-            logger.warning("unknown_relation_type", relation_type=relation_type)
+        start_time = time.time()
+
+        try:
+            if relation_type == "same_restaurant":
+                results = await self.get_restaurant_items(doc_id, limit=limit)
+            elif relation_type == "pairing":
+                results = await self.get_pairings(doc_id, limit=limit)
+            elif relation_type == "same_group":
+                results = await self._get_same_group_items(doc_id, limit)
+            elif relation_type == "all":
+                # Combine different relation types
+                tasks = [
+                    self.get_pairings(doc_id, limit=limit // 2),
+                    self._get_same_group_items(doc_id, limit=limit // 2),
+                ]
+                results_list = await asyncio.gather(*tasks)
+                combined = results_list[0] + results_list[1]
+                # Deduplicate by doc_id
+                seen = set()
+                results = []
+                for item in combined:
+                    if item["doc_id"] not in seen:
+                        seen.add(item["doc_id"])
+                        results.append(item)
+                results = results[:limit]
+            else:
+                logger.warning("unknown_relation_type", relation_type=relation_type)
+                results = []
+
+            duration = time.time() - start_time
+            record_search_request('graph', duration, len(results))
+
+            logger.info(
+                "graph_related_items_query",
+                doc_id=doc_id,
+                relation_type=relation_type,
+                result_count=len(results),
+                duration=duration,
+            )
+
+            return results
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_related_items_error", error=str(e), duration=duration)
             return []
 
     async def _get_same_group_items(
@@ -625,12 +832,14 @@ class GraphSearcher:
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Get items in the same menu group as the specified item."""
+        start_time = time.time()
+
         query = """
         MATCH (i:MenuItem {doc_id: $doc_id})
         MATCH (i)<-[:CONTAINS]-(g:MenuGroup)-[:CONTAINS]->(sibling:MenuItem)
         WHERE sibling.doc_id <> $doc_id
 
-        MATCH (g)<-[:HAS_GROUP]-(:Menu)<-[:HAS_MENU]-(r:Restaurant)
+        MATCH (g)<-[:HAS_GROUP]-(m:Menu)<-[:HAS_MENU]-(r:Restaurant)
 
         RETURN sibling.doc_id AS doc_id,
                sibling.name AS item_name,
@@ -647,11 +856,20 @@ class GraphSearcher:
         LIMIT $limit
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(query, {"doc_id": doc_id, "limit": limit})
-            records = await result.data()
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(query, {"doc_id": doc_id, "limit": limit})
+                records = await result.data()
 
-        return records
+            duration = time.time() - start_time
+            record_search_request('graph', duration, len(records))
+
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("_get_same_group_items_error", error=str(e), duration=duration)
+            return []
 
     async def search_by_doc_ids(
         self,
@@ -669,6 +887,8 @@ class GraphSearcher:
         """
         if not doc_ids:
             return []
+
+        start_time = time.time()
 
         query = """
         MATCH (i:MenuItem)
@@ -694,11 +914,27 @@ class GraphSearcher:
                m.name AS menu_name
         """
 
-        async with self.driver.session() as session:
-            result = await session.run(query, {"doc_ids": doc_ids})
-            records = await result.data()
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(query, {"doc_ids": doc_ids})
+                records = await result.data()
 
-        return records
+            duration = time.time() - start_time
+            record_search_request('graph', duration, len(records))
+
+            logger.info(
+                "graph_search_by_doc_ids",
+                doc_ids_count=len(doc_ids),
+                result_count=len(records),
+                duration=duration,
+            )
+
+            return records
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('graph', duration, 0)  # Record failed search
+            logger.error("graph_search_by_doc_ids_error", error=str(e), duration=duration)
+            return []
 
 
 # Singleton instance management

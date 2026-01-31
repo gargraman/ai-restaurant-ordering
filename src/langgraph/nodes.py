@@ -4,6 +4,7 @@ import asyncio
 import json
 import math
 import re
+import time
 from collections import defaultdict
 
 import structlog
@@ -23,6 +24,7 @@ from src.models.state import GraphState, SearchFilters
 from src.search.bm25 import BM25Searcher
 from src.search.vector import VectorSearcher
 from src.search.graph import GraphSearcher
+from src.metrics import record_llm_call, record_search_request
 
 
 class IntentDetectionResult(BaseModel):
@@ -241,8 +243,25 @@ async def intent_detector_node(state: GraphState) -> GraphState:
         user_input=state["user_input"],
     )
 
+    start_time = time.time()
     try:
         response = await llm.ainvoke(prompt)
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        token_usage = response.response_metadata.get('token_usage', {})
+        input_tokens = token_usage.get('prompt_tokens', 0)
+        output_tokens = token_usage.get('completion_tokens', 0)
+
+        # Record LLM metrics
+        record_llm_call(
+            model=settings.openai_model,
+            operation='intent_detection',
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
         raw = json.loads(response.content)
         result = IntentDetectionResult.model_validate(raw)
 
@@ -256,9 +275,16 @@ async def intent_detector_node(state: GraphState) -> GraphState:
             intent=state["intent"],
             is_follow_up=state["is_follow_up"],
             follow_up_type=state["follow_up_type"],
+            duration=duration
         )
 
     except (json.JSONDecodeError, ValidationError) as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='intent_detection',
+            duration=duration
+        )
         logger.error("intent_detection_parse_error", error=str(e))
         state["intent"] = "search"
         state["is_follow_up"] = False
@@ -266,6 +292,12 @@ async def intent_detector_node(state: GraphState) -> GraphState:
         state["confidence"] = 0.5
 
     except Exception as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='intent_detection',
+            duration=duration
+        )
         logger.error("intent_detection_error", error=str(e))
         state["intent"] = "search"
         state["is_follow_up"] = False
@@ -318,8 +350,25 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
         user_input=state["user_input"],
     )
 
+    start_time = time.time()
     try:
         response = await llm.ainvoke(entity_prompt)
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        token_usage = response.response_metadata.get('token_usage', {})
+        input_tokens = token_usage.get('prompt_tokens', 0)
+        output_tokens = token_usage.get('completion_tokens', 0)
+
+        # Record LLM metrics
+        record_llm_call(
+            model=settings.openai_model,
+            operation='entity_extraction',
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
         raw = json.loads(response.content)
         extracted_model = EntityExtractionResult.model_validate(raw)
         extracted = {k: v for k, v in extracted_model.model_dump().items() if v is not None}
@@ -367,6 +416,12 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
         logger.info("entities_extracted", filters=filters)
 
     except Exception as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='entity_extraction',
+            duration=duration
+        )
         logger.error("entity_extraction_error", error=str(e))
 
     # Step 2: Query expansion
@@ -375,14 +430,37 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
         entities=json.dumps(state.get("filters", {})),
     )
 
+    start_time = time.time()
     try:
         response = await llm.ainvoke(expansion_prompt)
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        token_usage = response.response_metadata.get('token_usage', {})
+        input_tokens = token_usage.get('prompt_tokens', 0)
+        output_tokens = token_usage.get('completion_tokens', 0)
+
+        # Record LLM metrics
+        record_llm_call(
+            model=settings.openai_model,
+            operation='query_expansion',
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
         state["expanded_query"] = response.content.strip()
         state["resolved_query"] = state["expanded_query"]
 
         logger.info("query_expanded", expanded_query=state["expanded_query"])
 
     except Exception as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='query_expansion',
+            duration=duration
+        )
         logger.error("query_expansion_error", error=str(e))
         state["expanded_query"] = state["user_input"]
         state["resolved_query"] = state["user_input"]
@@ -655,14 +733,37 @@ async def rag_generator_node(state: GraphState) -> GraphState:
         context=formatted_context,
     )
 
+    start_time = time.time()
     try:
         response = await llm.ainvoke(prompt)
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        token_usage = response.response_metadata.get('token_usage', {})
+        input_tokens = token_usage.get('prompt_tokens', 0)
+        output_tokens = token_usage.get('completion_tokens', 0)
+
+        # Record LLM metrics
+        record_llm_call(
+            model=settings.openai_model,
+            operation='rag_generation',
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
         state["answer"] = response.content
         state["sources"] = [doc.get("doc_id") for doc in context if doc.get("doc_id")]
 
-        logger.info("rag_generation_complete", answer_length=len(state["answer"]))
+        logger.info("rag_generation_complete", answer_length=len(state["answer"]), duration=duration)
 
     except Exception as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='rag_generation',
+            duration=duration
+        )
         logger.error("rag_generation_error", error=str(e))
         state["answer"] = "I apologize, but I encountered an error generating a response. Please try again."
         state["sources"] = []
@@ -682,12 +783,35 @@ async def clarification_node(state: GraphState) -> GraphState:
         entities=json.dumps(state.get("filters", {})),
     )
 
+    start_time = time.time()
     try:
         response = await llm.ainvoke(prompt)
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        token_usage = response.response_metadata.get('token_usage', {})
+        input_tokens = token_usage.get('prompt_tokens', 0)
+        output_tokens = token_usage.get('completion_tokens', 0)
+
+        # Record LLM metrics
+        record_llm_call(
+            model=settings.openai_model,
+            operation='clarification_generation',
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
         state["answer"] = response.content
         state["sources"] = []
 
     except Exception as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='clarification_generation',
+            duration=duration
+        )
         logger.error("clarification_error", error=str(e))
         state["answer"] = "Could you provide more details about what you're looking for? For example, the location, party size, or cuisine preference?"
         state["sources"] = []

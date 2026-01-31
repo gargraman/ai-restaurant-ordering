@@ -1,6 +1,7 @@
 """Hybrid search combining BM25 and vector search with RRF fusion."""
 
 import asyncio
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -10,6 +11,7 @@ from src.config import get_settings
 from src.models.state import SearchFilters
 from src.search.bm25 import BM25Searcher
 from src.search.vector import VectorSearcher
+from src.metrics import record_search_request
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -59,40 +61,54 @@ class HybridSearcher:
             vector_weight=vector_weight,
         )
 
-        # Run BM25 and vector searches in parallel
-        bm25_task = asyncio.create_task(
-            asyncio.to_thread(
-                self.bm25_searcher.search,
-                query,
-                filters,
-                settings.bm25_top_k,
+        start_time = time.time()
+        try:
+            # Run BM25 and vector searches in parallel
+            bm25_task = asyncio.create_task(
+                asyncio.to_thread(
+                    self.bm25_searcher.search,
+                    query,
+                    filters,
+                    settings.bm25_top_k,
+                )
             )
-        )
-        vector_task = asyncio.create_task(
-            self.vector_searcher.search(query, filters, settings.vector_top_k)
-        )
+            vector_task = asyncio.create_task(
+                self.vector_searcher.search(query, filters, settings.vector_top_k)
+            )
 
-        bm25_results, vector_results = await asyncio.gather(bm25_task, vector_task)
+            bm25_results, vector_results = await asyncio.gather(bm25_task, vector_task)
 
-        logger.info(
-            "search_results",
-            bm25_count=len(bm25_results),
-            vector_count=len(vector_results),
-        )
+            logger.info(
+                "search_results",
+                bm25_count=len(bm25_results),
+                vector_count=len(vector_results),
+            )
 
-        # Merge with RRF
-        merged = self._rrf_merge(
-            bm25_results,
-            vector_results,
-            bm25_weight,
-            vector_weight,
-        )
+            # Merge with RRF
+            merged = self._rrf_merge(
+                bm25_results,
+                vector_results,
+                bm25_weight,
+                vector_weight,
+            )
 
-        # Fetch full documents for vector-only results
-        merged = await self._enrich_results(merged, bm25_results)
+            # Fetch full documents for vector-only results
+            merged = await self._enrich_results(merged, bm25_results)
 
-        # Return top_k
-        return merged[:top_k]
+            # Return top_k
+            result = merged[:top_k]
+
+            duration = time.time() - start_time
+            record_search_request('hybrid', duration, len(result))
+
+            logger.info("hybrid_search_complete", result_count=len(result), duration=duration)
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            record_search_request('hybrid', duration, 0)  # Record failed search
+            logger.error("hybrid_search_error", error=str(e), duration=duration)
+            raise
 
     def _rrf_merge(
         self,

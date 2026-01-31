@@ -1,5 +1,6 @@
 """Embedding generation for vector search."""
 
+import time
 from typing import Sequence
 
 import structlog
@@ -13,6 +14,7 @@ from tenacity import (
 
 from src.config import get_settings
 from src.models.index import IndexDocument
+from src.metrics import record_llm_call
 
 logger = structlog.get_logger()
 
@@ -50,12 +52,36 @@ class EmbeddingGenerator:
     )
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate embedding for a single text."""
-        response = await self.client.embeddings.create(
-            model=self.model,
-            input=text,
-            dimensions=self.dimensions,
-        )
-        return response.data[0].embedding
+        start_time = time.time()
+        try:
+            response = await self.client.embeddings.create(
+                model=self.model,
+                input=text,
+                dimensions=self.dimensions,
+            )
+            duration = time.time() - start_time
+
+            # Extract token usage if available
+            usage = getattr(response, 'usage', None)
+            input_tokens = usage.prompt_tokens if usage else 0
+
+            # Record LLM metrics
+            record_llm_call(
+                model=self.model,
+                operation='embedding_generation',
+                duration=duration,
+                input_tokens=input_tokens
+            )
+
+            return response.data[0].embedding
+        except Exception as e:
+            duration = time.time() - start_time
+            record_llm_call(
+                model=self.model,
+                operation='embedding_generation',
+                duration=duration
+            )
+            raise
 
     @retry(
         stop=stop_after_attempt(5),
@@ -82,15 +108,38 @@ class EmbeddingGenerator:
                 f"Batch size {len(texts)} exceeds OpenAI limit of {MAX_BATCH_SIZE}"
             )
 
-        response = await self.client.embeddings.create(
-            model=self.model,
-            input=texts,
-            dimensions=self.dimensions,
-        )
+        start_time = time.time()
+        try:
+            response = await self.client.embeddings.create(
+                model=self.model,
+                input=texts,
+                dimensions=self.dimensions,
+            )
+            duration = time.time() - start_time
 
-        # Sort by index to maintain order
-        sorted_data = sorted(response.data, key=lambda x: x.index)
-        return [item.embedding for item in sorted_data]
+            # Extract token usage if available
+            usage = getattr(response, 'usage', None)
+            input_tokens = usage.prompt_tokens if usage else 0
+
+            # Record LLM metrics
+            record_llm_call(
+                model=self.model,
+                operation='embedding_batch_generation',
+                duration=duration,
+                input_tokens=input_tokens
+            )
+
+            # Sort by index to maintain order
+            sorted_data = sorted(response.data, key=lambda x: x.index)
+            return [item.embedding for item in sorted_data]
+        except Exception as e:
+            duration = time.time() - start_time
+            record_llm_call(
+                model=self.model,
+                operation='embedding_batch_generation',
+                duration=duration
+            )
+            raise
 
     async def generate_document_embeddings(
         self,

@@ -9,6 +9,7 @@ import redis.asyncio as redis
 
 from src.config import get_settings
 from src.models.state import SessionState, ConversationTurn, SessionEntities
+from src.metrics import increment_active_sessions, decrement_active_sessions
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -82,6 +83,7 @@ class SessionManager:
 
         await self.save_session(session)
         logger.info("session_created", session_id=session_id)
+        increment_active_sessions()
 
         return session
 
@@ -139,6 +141,7 @@ class SessionManager:
             deleted = result > 0
             if deleted:
                 logger.info("session_deleted", session_id=session_id)
+                decrement_active_sessions()
             return deleted
 
         except Exception as e:

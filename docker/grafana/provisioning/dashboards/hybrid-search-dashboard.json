@@ -1,0 +1,186 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Hybrid Search Application Dashboard",
+    "tags": ["hybrid-search", "performance"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "HTTP Requests Total",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(increase(http_requests_total[$__range]))",
+            "legendFormat": "Total Requests"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 80}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "HTTP Request Duration (95th percentile)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[$__interval])) by (le))",
+            "legendFormat": "95th Percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)",
+            "format": "s"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Active Sessions",
+        "type": "singlestat",
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "active_sessions",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 80}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "CPU Utilization",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+        "targets": [
+          {
+            "expr": "cpu_utilization_percent",
+            "legendFormat": "CPU %"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Percentage",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Memory Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "memory_usage_bytes",
+            "legendFormat": "Used Memory"
+          },
+          {
+            "expr": "memory_limit_bytes",
+            "legendFormat": "Memory Limit"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Bytes",
+            "format": "bytes"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Search Requests by Type",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(increase(search_requests_total[$__interval])) by (search_type)",
+            "legendFormat": "{{search_type}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Search Duration by Type",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(search_duration_seconds_bucket[$__interval])) by (le, search_type))",
+            "legendFormat": "{{search_type}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)",
+            "format": "s"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "LLM Calls by Operation",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "sum(increase(llm_calls_total[$__interval])) by (operation)",
+            "legendFormat": "{{operation}}"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "LLM Call Duration by Operation",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(llm_call_duration_seconds_bucket[$__interval])) by (le, operation))",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)",
+            "format": "s"
+          }
+        ]
+      }
+    ],
+    "time": {"from": "now-6h", "to": "now"},
+    "refresh": "5s",
+    "schemaVersion": 12,
+    "version": 1
+  },
+  "folder": "",
+  "overwrite": true
+}

@@ -1,5 +1,6 @@
 """BM25 lexical search via OpenSearch."""
 
+import time
 from typing import Any
 
 import structlog
@@ -7,6 +8,7 @@ from opensearchpy import OpenSearch
 
 from src.config import get_settings
 from src.models.state import SearchFilters
+from src.metrics import record_search_request, record_database_query_performance
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -49,35 +51,38 @@ class BM25Searcher:
 
         logger.info("bm25_search", query=query, filters=filters, top_k=top_k)
 
-        # Build filter clauses
-        must_filters = self._build_filters(filters)
-
-        # Build search query
-        body = {
-            "query": {
-                "bool": {
-                    "must": {
-                        "multi_match": {
-                            "query": query,
-                            "fields": [
-                                "item_name^3",
-                                "item_description^2",
-                                "text",
-                                "restaurant_name",
-                                "menu_group_name",
-                            ],
-                            "type": "best_fields",
-                            "fuzziness": "AUTO",
-                        }
-                    },
-                    "filter": must_filters,
-                }
-            },
-            "size": top_k,
-        }
-
+        start_time = time.time()
         try:
+            # Build filter clauses
+            must_filters = self._build_filters(filters)
+
+            # Build search query
+            body = {
+                "query": {
+                    "bool": {
+                        "must": {
+                            "multi_match": {
+                                "query": query,
+                                "fields": [
+                                    "item_name^3",
+                                    "item_description^2",
+                                    "text",
+                                    "restaurant_name",
+                                    "menu_group_name",
+                                ],
+                                "type": "best_fields",
+                                "fuzziness": "AUTO",
+                            }
+                        },
+                        "filter": must_filters,
+                    }
+                },
+                "size": top_k,
+            }
+
+            query_start_time = time.time()
             response = self.client.search(index=self.index_name, body=body)
+            query_duration = time.time() - query_start_time
 
             results = []
             for hit in response["hits"]["hits"]:
@@ -85,11 +90,35 @@ class BM25Searcher:
                 doc["_score"] = hit["_score"]
                 results.append(doc)
 
-            logger.info("bm25_search_complete", result_count=len(results))
+            duration = time.time() - start_time
+
+            # Record query performance metrics for OpenSearch (treating as database query)
+            record_database_query_performance(
+                database='opensearch',
+                query_type='bm25_search',
+                table=self.index_name,
+                duration=query_duration,
+                is_error=False
+            )
+
+            record_search_request('bm25', duration, len(results))
+
+            logger.info("bm25_search_complete", result_count=len(results), duration=duration)
             return results
 
         except Exception as e:
-            logger.error("bm25_search_error", error=str(e))
+            duration = time.time() - start_time
+            # Record query error metrics
+            record_database_query_performance(
+                database='opensearch',
+                query_type='bm25_search',
+                table=self.index_name,
+                duration=duration,
+                is_error=True
+            )
+
+            record_search_request('bm25', duration, 0)  # Record failed search
+            logger.error("bm25_search_error", error=str(e), duration=duration)
             return []
 
     def _build_filters(self, filters: SearchFilters) -> list[dict]:

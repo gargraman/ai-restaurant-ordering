@@ -1,0 +1,1 @@
+"""Monitoring module for the hybrid search application."""

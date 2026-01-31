@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Tracing (Phase 2)
+    otel_tracing_enabled: bool = True
+    otel_service_name: str = "hybrid-search-v2"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+
     @property
     def postgres_dsn(self) -> str:
         """PostgreSQL connection string."""
