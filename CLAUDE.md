@@ -15,6 +15,9 @@ docker-compose -f deployment/docker-compose.yml up -d
 # Start with optional GUI tools (Redis Commander, OpenSearch Dashboards)
 docker-compose -f deployment/docker-compose.yml --profile tools up -d
 
+# Start monitoring stack (Prometheus, Grafana, Jaeger)
+docker-compose -f deployment/docker-compose.monitoring.yml up -d
+
 # Install dependencies
 pip install -e ".[dev]"
 
@@ -33,7 +36,7 @@ ruff check . --fix
 # Type checking
 mypy src/
 
-# Start API server
+# Start API server (requires OPENAI_API_KEY environment variable)
 uvicorn src.api.main:app --reload
 
 # Data ingestion (OpenSearch + pgvector)
@@ -91,9 +94,16 @@ User Input → Context Resolver (Redis session) → Intent Detector
 
 - **`src/session/manager.py`** - Redis-based session storage (entities, conversation history, previous results)
 
-- **`src/api/main.py`** - FastAPI endpoints: `/chat/search`, `/session/{id}`, `/health`
+- **`src/api/main.py`** - FastAPI endpoints: `/chat/search`, `/session/{id}`, `/session/{id}/feedback`, `/health`, `/metrics`
 
 - **`src/config/settings.py`** - Pydantic BaseSettings with environment variable loading
+
+- **`src/monitoring/`** - Observability and metrics
+  - `middleware.py` - FastAPI middleware for request tracking
+  - `system_metrics.py` - CPU, memory, disk metrics
+  - `database_metrics.py` - PostgreSQL connection pool monitoring
+  - `pgvector_metrics.py` - Vector search performance tracking
+  - `tracing.py` - OpenTelemetry distributed tracing setup
 
 ### Infrastructure
 
@@ -103,14 +113,20 @@ User Input → Context Resolver (Redis session) → Intent Detector
 | PostgreSQL+pgvector | 5433 | Vector similarity search |
 | Redis | 6379 | Session state storage |
 | Neo4j | 7474 (HTTP), 7687 (Bolt) | Graph relationships |
+| API Server | 8000 | FastAPI backend |
+| UI (Next.js) | 3000 | Web interface |
 | Redis Commander | 8081 | Redis GUI (optional, `--profile tools`) |
 | OpenSearch Dashboards | 5601 | OpenSearch GUI (optional, `--profile tools`) |
+| Prometheus | 9090 | Metrics collection (monitoring stack) |
+| Grafana | 3000 | Metrics visualization (monitoring stack) |
+| Jaeger | 16686 | Distributed tracing UI (monitoring stack) |
 
 ### Feature Flags
 
 ```python
-enable_graph_search: bool = False   # Enable Neo4j graph search
-enable_3way_rrf: bool = False       # Enable 3-way RRF fusion (BM25 + vector + graph)
+enable_graph_search: bool = False      # Enable Neo4j graph search
+enable_3way_rrf: bool = False          # Enable 3-way RRF fusion (BM25 + vector + graph)
+otel_tracing_enabled: bool = True      # Enable OpenTelemetry distributed tracing
 ```
 
 ### Design Principles
