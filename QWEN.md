@@ -44,7 +44,7 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 
 1. **Start Infrastructure**:
    ```bash
-   docker-compose -f docker/docker-compose.yml up -d
+   docker-compose -f deployment/docker-compose.yml up -d
    ```
 
 2. **Install Dependencies**:
@@ -84,7 +84,7 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 - `src/search/`: Search implementations (BM25, vector, hybrid)
 - `src/ingestion/`: Data ingestion pipeline
 - `src/session/`: Session management with Redis
-- `docker/docker-compose.yml`: Infrastructure containers
+- `deployment/docker-compose.yml`: Infrastructure containers
 - `scripts/run_ingestion.py`: Data ingestion script
 - `tests/`: Unit and integration tests
 

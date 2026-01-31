@@ -1,0 +1,30 @@
+# UI Service Dockerfile
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy UI package files
+COPY ui/package*.json ./
+COPY ui/ .
+
+# Install dependencies
+RUN npm install
+
+# Build the Next.js app
+RUN npm run build
+
+# Production stage - Using nginx to serve the static site
+FROM nginx:alpine
+
+# Copy custom nginx configuration to handle API proxying
+COPY deployment/nginx.conf /etc/nginx/nginx.conf
+
+# Copy the built Next.js app from the builder stage
+COPY --from=builder /app/out /usr/share/nginx/html
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1

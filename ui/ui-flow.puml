@@ -1,0 +1,33 @@
+@startuml
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+
+title Chatbot UI Flow - Restaurant Discovery
+
+actor User
+participant "Chat Interface" as CI
+participant "Backend API" as API
+participant "Restaurant Cards" as RC
+
+User -> CI: Enter query (e.g. "Find Italian catering in Boston")
+CI -> API: Send search request with session ID
+API -> CI: Return search response with results
+CI -> RC: Display restaurant cards
+RC -> User: Show restaurant cards with name, cuisine, price, rating
+User -> CI: Click on restaurant card
+CI -> RC: Expand card details or show bottom sheet
+User -> CI: Continue conversation
+CI -> API: Send follow-up query maintaining context
+API -> CI: Return updated response
+CI -> User: Show new results in chat
+
+note over User, CI
+  Context maintained:
+  - Location (Boston)
+  - Cuisine preference (Italian)
+  - Party size (implied)
+end note
+
+@enduml
