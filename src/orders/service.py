@@ -4,6 +4,7 @@ import secrets
 import string
 from datetime import UTC, datetime
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -137,6 +138,9 @@ class OrderService:
         if not restaurant:
             raise OrderValidationError("Restaurant not found")
 
+        if not restaurant.is_active:
+            raise OrderValidationError("Restaurant is not active")
+
         if not restaurant.is_accepting_orders:
             raise OrderValidationError("Restaurant is not accepting orders")
 
@@ -169,7 +173,7 @@ class OrderService:
             restaurant_id=cart.restaurant_id,
             customer_id=customer_id,
             order_number=order_number,
-            idempotency_key=str(uuid4()),
+            idempotency_key=self._generate_idempotency_key(tenant_id, session_id, cart),
             status=OrderStatus.CREATED,
             fulfillment_type=ft,
             delivery_address=delivery_address,
@@ -200,6 +204,10 @@ class OrderService:
             # Calculate modifiers price
             modifiers_price_cents = sum(m.get("price_cents", 0) for m in cart_item.modifiers)
             total_cents = (cart_item.unit_price_cents + modifiers_price_cents) * cart_item.quantity
+
+            # Validate menu item exists before creating order item
+            if not menu_item:
+                raise OrderValidationError(f"Menu item {cart_item.menu_item_id} not found")
 
             order_item = OrderItem(
                 order_id=str(order.id),
@@ -279,6 +287,8 @@ class OrderService:
             from src.payments.models import PaymentIntentRequest
 
             request = PaymentIntentRequest(
+                order_id=str(order.id),
+                tenant_id=str(order.tenant_id),
                 amount_cents=order.total_cents,
                 currency="usd",
                 connected_account_id=stripe_account_id,
@@ -526,6 +536,42 @@ class OrderService:
 
         return f"{prefix}-{number}"
 
+    def _generate_idempotency_key(self, tenant_id: str, session_id: str, cart: Cart) -> str:
+        """Generate idempotency key based on session and cart contents.
+
+        Args:
+            tenant_id: Tenant ID
+            session_id: Session ID
+            cart: Cart with items
+
+        Returns:
+            Unique idempotency key
+        """
+        # Create a hash of the cart contents to ensure idempotency
+        # This ensures the same cart contents result in the same order
+        cart_contents = {
+            "tenant_id": tenant_id,
+            "session_id": session_id,
+            "restaurant_id": cart.restaurant_id,
+            "items": sorted([
+                {
+                    "menu_item_id": item.menu_item_id,
+                    "quantity": item.quantity,
+                    "unit_price_cents": item.unit_price_cents,
+                    "modifiers": sorted(item.modifiers, key=lambda x: str(x)),
+                    "special_instructions": item.special_instructions or "",
+                }
+                for item in cart.items
+            ], key=lambda x: x["menu_item_id"]),
+            "fulfillment_type": cart.fulfillment_type if hasattr(cart, 'fulfillment_type') else 'pickup',
+        }
+
+        # Convert to string and hash
+        import json
+        cart_str = json.dumps(cart_contents, sort_keys=True, default=str)
+        hash_obj = sha256(cart_str.encode('utf-8'))
+        return hash_obj.hexdigest()
+
     async def clear_cart_after_order(
         self,
         tenant_id: str,
@@ -580,12 +626,15 @@ class OrderService:
                 return str(existing_user.id)
 
         # If not found by email, try to find by guest_identifier
-        # This could be a session ID or other identifier
+        # Create a predictable email pattern for guest users based on the identifier
+        guest_email_pattern = f"guest_{guest_identifier.replace('@', '_at_').replace('.', '_dot_')}@example.com"
+
         result = await self.db.execute(
             select(User).where(
                 User.tenant_id == tenant_id,
-                User.email.like(f"%{guest_identifier}%"),  # Match guest identifier in email
-                User.role == DBUserRole.CUSTOMER
+                User.email == guest_email_pattern,
+                User.role == DBUserRole.CUSTOMER,
+                User.is_verified == False  # Unverified = guest user
             )
         )
         existing_user = result.scalar_one_or_none()
@@ -594,9 +643,8 @@ class OrderService:
             return str(existing_user.id)
 
         # Create new guest user
-        # Generate a unique email for the guest user
-        import uuid
-        guest_email = email or f"guest_{uuid.uuid4()}@example.com"
+        # Generate a consistent email for the guest user based on the identifier
+        guest_email = email or f"guest_{guest_identifier.replace('@', '_at_').replace('.', '_dot_')}@example.com"
 
         user = User(
             email=guest_email,

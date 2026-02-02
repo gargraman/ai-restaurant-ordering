@@ -47,6 +47,13 @@ async def lifespan(app: FastAPI):
 
     logger.info("application_starting", app_name=settings.app_name)
 
+    # Validate required configurations
+    validation_errors = settings.validate_required_configs()
+    if validation_errors:
+        for error in validation_errors:
+            logger.error("config_validation_error", error=error)
+        raise RuntimeError(f"Configuration validation failed: {'; '.join(validation_errors)}")
+
     # Initialize JWT service
     if settings.jwt_secret_key:
         init_jwt_service(

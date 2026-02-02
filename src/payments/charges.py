@@ -1,6 +1,7 @@
 """Payment intent creation and management with split payments."""
 
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import stripe
@@ -299,11 +300,17 @@ class PaymentIntentManager:
         Returns:
             Total platform fee in cents
         """
-        percentage_fee = int(order_total_cents * (fee_percentage / 100))
-        total_fee = percentage_fee + fee_fixed_cents
+        # Calculate in dollars for precision, then convert back to cents
+        order_total_dollars = Decimal(order_total_cents) / Decimal(100)
+        percentage_fee_dollars = order_total_dollars * (Decimal(fee_percentage) / Decimal(100))
+        fixed_fee_dollars = Decimal(fee_fixed_cents) / Decimal(100)
+        total_fee_dollars = percentage_fee_dollars + fixed_fee_dollars
+
+        # Convert back to cents with proper financial rounding (half up)
+        total_fee_cents = int(total_fee_dollars.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) * 100)
 
         # Ensure fee doesn't exceed order total
-        return min(total_fee, order_total_cents - 50)  # Leave at least 50 cents
+        return min(total_fee_cents, order_total_cents - 50)  # Leave at least 50 cents
 
     def estimate_stripe_fees(self, amount_cents: int) -> int:
         """Estimate Stripe processing fees.
@@ -317,6 +324,11 @@ class PaymentIntentManager:
         Returns:
             Estimated Stripe fee in cents
         """
-        percentage_fee = int(amount_cents * 0.029)  # 2.9%
-        fixed_fee = 30  # $0.30
-        return percentage_fee + fixed_fee
+        # Calculate in dollars for precision, then convert back to cents
+        amount_dollars = Decimal(amount_cents) / Decimal(100)
+        percentage_fee_dollars = amount_dollars * Decimal('0.029')  # 2.9%
+        fixed_fee_dollars = Decimal('0.30')  # $0.30
+        total_fee_dollars = percentage_fee_dollars + fixed_fee_dollars
+
+        # Convert back to cents with proper financial rounding (half up)
+        return int(total_fee_dollars.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) * 100)

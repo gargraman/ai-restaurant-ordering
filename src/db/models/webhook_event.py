@@ -1,7 +1,7 @@
 """Webhook event model for idempotent processing."""
 
 import enum
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, Index, String, Text
@@ -109,18 +109,18 @@ class WebhookEvent(Base, UUIDMixin, TimestampMixin):
             self.status == WebhookEventStatus.FAILED
             and self.retry_count < 5
             and self.next_retry_at is not None
-            and datetime.utcnow() >= self.next_retry_at
+            and datetime.now(UTC) >= self.next_retry_at
         )
 
     def mark_processing(self) -> None:
         """Mark event as currently processing."""
         self.status = WebhookEventStatus.PROCESSING
-        self.processing_started_at = datetime.utcnow()
+        self.processing_started_at = datetime.now(UTC)
 
     def mark_processed(self) -> None:
         """Mark event as successfully processed."""
         self.status = WebhookEventStatus.PROCESSED
-        self.processed_at = datetime.utcnow()
+        self.processed_at = datetime.now(UTC)
 
     def mark_failed(self, error: str, retry_delay_seconds: int = 60) -> None:
         """Mark event as failed with retry.
@@ -138,7 +138,7 @@ class WebhookEvent(Base, UUIDMixin, TimestampMixin):
         if self.retry_count < 5:
             # Exponential backoff
             delay = retry_delay_seconds * (2 ** (self.retry_count - 1))
-            self.next_retry_at = datetime.utcnow() + timedelta(seconds=delay)
+            self.next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
         else:
             self.next_retry_at = None  # No more retries
 
@@ -149,5 +149,5 @@ class WebhookEvent(Base, UUIDMixin, TimestampMixin):
             reason: Reason for ignoring
         """
         self.status = WebhookEventStatus.IGNORED
-        self.processed_at = datetime.utcnow()
+        self.processed_at = datetime.now(UTC)
         self.error_message = f"Ignored: {reason}"

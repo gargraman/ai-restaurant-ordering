@@ -1,5 +1,6 @@
 """Order management API endpoints."""
 
+import asyncio
 from datetime import datetime
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUserDep, TenantIdDep, get_current_user_or_guest
+from src.auth.models import CurrentUser
 from src.config.settings import get_settings
 from src.db import get_db, set_tenant_context
 from src.db.models.order import OrderStatus, FulfillmentType
@@ -28,22 +30,30 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
-# Redis client singleton
+# Redis client singleton with thread-safe initialization
 _redis_client: Redis | None = None
+_redis_init_lock = asyncio.Lock()
 
 
 async def get_redis() -> Redis:
-    """Get Redis client."""
+    """Get Redis client with thread-safe initialization."""
     global _redis_client
     if _redis_client is None:
-        settings = get_settings()
-        _redis_client = Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            password=settings.redis_password or None,
-            db=settings.redis_db,
-            decode_responses=True,
-        )
+        async with _redis_init_lock:
+            # Double-check locking pattern
+            if _redis_client is None:
+                settings = get_settings()
+                _redis_client = Redis(
+                    host=settings.redis_host,
+                    port=settings.redis_port,
+                    password=settings.redis_password or None,
+                    db=settings.redis_db,
+                    decode_responses=True,
+                    socket_connect_timeout=5,  # 5 second connection timeout
+                    socket_timeout=5,          # 5 second operation timeout
+                    health_check_interval=30,  # Check connection health every 30 seconds
+                    max_connections=20,        # Limit concurrent connections
+                )
     return _redis_client
 
 
@@ -434,6 +444,9 @@ async def create_order(
             # If user is already a guest, use their ID
             customer_id = user.user_id
 
+        # Start transaction explicitly
+        await db.begin()
+
         # Create order
         order = await order_service.create_order_from_cart(
             tenant_id=tenant_id,
@@ -454,19 +467,28 @@ async def create_order(
         # Clear cart
         await order_service.clear_cart_after_order(tenant_id, session_id)
 
+        # Commit transaction
+        await db.commit()
+
         # Reload order with relationships
         order = await order_service.get_order(str(order.id), tenant_id)
 
         return _build_order_response(order)
 
     except OrderValidationError as e:
+        # Rollback transaction on validation error
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except PaymentError as e:
+        # Rollback transaction on payment error
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Payment failed: {str(e)}",
         )
     except Exception as e:
+        # Rollback transaction on any other error
+        await db.rollback()
         logger.error("Order creation failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

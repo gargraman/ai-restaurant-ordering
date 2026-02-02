@@ -195,7 +195,9 @@ class RefundManager:
 
             # Check if already fully refunded
             if hasattr(payment_intent, "amount_refunded"):
-                remaining = payment_intent.amount - payment_intent.amount_refunded
+                amount_refunded_raw = getattr(payment_intent, "amount_refunded", 0)
+                amount_refunded = amount_refunded_raw if isinstance(amount_refunded_raw, (int, float)) else 0
+                remaining = payment_intent.amount - amount_refunded
                 if remaining <= 0:
                     return False, "Payment already fully refunded"
 

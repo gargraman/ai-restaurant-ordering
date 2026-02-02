@@ -33,6 +33,13 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 - **Query Rewriting**: Enhances queries based on conversation history
 - **Follow-up Handling**: Processes follow-up questions that refine previous searches
 
+#### Order Management System
+- **Order Lifecycle**: Complete order management with state machine
+- **Cart Management**: Shopping cart functionality with Redis storage
+- **Payment Processing**: Stripe integration for payments
+- **POS Integration**: Integration with Point-of-Sale systems
+- **Tenant Isolation**: Row-Level Security (RLS) for multi-tenancy
+
 ## Building and Running
 
 ### Prerequisites
@@ -84,6 +91,10 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 - `src/search/`: Search implementations (BM25, vector, hybrid)
 - `src/ingestion/`: Data ingestion pipeline
 - `src/session/`: Session management with Redis
+- `src/orders/`: Order management system
+- `src/payments/`: Payment processing with Stripe
+- `src/notifications/`: Notification service
+- `src/tasks/`: Background tasks with Celery
 - `deployment/docker-compose.yml`: Infrastructure containers
 - `scripts/run_ingestion.py`: Data ingestion script
 - `tests/`: Unit and integration tests
@@ -95,6 +106,12 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 - `GET /session/{session_id}`: Get session state
 - `DELETE /session/{session_id}`: Clear session
 - `POST /session/{session_id}/feedback`: Submit relevance feedback
+- `POST /orders`: Create orders
+- `GET /orders/{order_id}`: Get order details
+- `POST /orders/{order_id}/cancel`: Cancel an order
+- `POST /webhooks/stripe`: Handle Stripe webhooks
+- `POST /webhooks/square`: Handle Square webhooks
+- `POST /webhooks/toast`: Handle Toast webhooks
 
 ## Development Conventions
 
@@ -103,6 +120,7 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 - **Testing**: PyTest with coverage reporting
 - **Dependencies**: Managed via pyproject.toml
 - **Logging**: Structured logging with structlog
+- **Multi-tenancy**: Row-Level Security (RLS) enforced throughout
 
 ## Search Pipeline Flow
 
@@ -116,6 +134,15 @@ Hybrid Search v2 is a conversational search and RAG (Retrieval-Augmented Generat
 8. **RAG Generation**: Generate natural language response
 9. **Session Update**: Save state back to Redis
 
+## Order Management Flow
+
+1. **Cart Management**: Items stored in Redis with session scoping
+2. **Order Creation**: Transaction-safe creation with validation
+3. **Payment Processing**: Stripe payment intent creation
+4. **Webhook Handling**: Process payment confirmations via webhooks
+5. **POS Routing**: Send orders to restaurant POS systems
+6. **Status Tracking**: State machine for order lifecycle
+
 ## Configuration Options
 
 The system is highly configurable through environment variables defined in `src/config/settings.py`:
@@ -125,6 +152,8 @@ The system is highly configurable through environment variables defined in `src/
 - PostgreSQL/pgvector connection details
 - Redis connection details
 - Search parameters (top-k values, weights, RRF constants)
+- Stripe payment settings
+- POS integration settings
 - Feature flags for experimental features
 
 ## Testing Strategy
@@ -133,3 +162,13 @@ The system is highly configurable through environment variables defined in `src/
 - Integration tests for API endpoints
 - End-to-end tests for the search pipeline
 - Mock services for external dependencies in tests
+- Comprehensive test coverage for critical order management flows
+
+## Security Features
+
+- JWT-based authentication and authorization
+- Row-Level Security (RLS) for tenant isolation
+- Secure credential storage with AWS KMS encryption
+- Input validation and sanitization
+- Secure payment processing with Stripe Connect
+- Webhook signature verification

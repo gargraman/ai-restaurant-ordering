@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     sender_email: str = ""
 
+    # Twilio SMS Notifications
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
+
     # Legacy Encryption (deprecated - use AWS KMS)
     encryption_key: str = ""
 
@@ -152,6 +157,32 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    def validate_required_configs(self) -> list[str]:
+        """Validate required configuration at startup.
+
+        Returns:
+            List of missing required configuration values
+        """
+        errors = []
+
+        if self.enable_payments and not self.stripe_secret_key:
+            errors.append("stripe_secret_key is required when payments are enabled")
+
+        if self.enable_payments and not self.stripe_webhook_secret:
+            errors.append("stripe_webhook_secret is required when payments are enabled")
+
+        if self.enable_pos_integration and not self.square_application_id:
+            errors.append("square_application_id is required when POS integration is enabled")
+
+        if self.enable_pos_integration and not self.square_application_secret:
+            errors.append("square_application_secret is required when POS integration is enabled")
+
+        # Check for notification configuration
+        if not self.sendgrid_api_key and not self.smtp_server:
+            errors.append("Either sendgrid_api_key or smtp_server must be configured for notifications")
+
+        return errors
 
     @property
     def redis_url(self) -> str:

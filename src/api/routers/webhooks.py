@@ -15,7 +15,7 @@ from src.db.models.payment import PaymentIntent, PaymentStatus
 from src.db.models.stripe_account import StripeAccount, StripeAccountStatus
 from src.db.models.pos_connection import POSConnection
 from src.db.models.restaurant import Restaurant
-from src.db.models.webhook_event import WebhookEvent
+from src.db.models.webhook_event import WebhookEvent, WebhookEventStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -27,8 +27,8 @@ async def _is_event_processed(db: AsyncSession, provider: str, event_id: str) ->
     result = await db.execute(
         select(WebhookEvent).where(
             WebhookEvent.provider == provider,
-            WebhookEvent.event_id == event_id,
-            WebhookEvent.processed == True,
+            WebhookEvent.provider_event_id == event_id,
+            WebhookEvent.status.in_([WebhookEventStatus.PROCESSED, WebhookEventStatus.IGNORED]),
         )
     )
     return result.scalar_one_or_none() is not None
@@ -44,12 +44,14 @@ async def _record_webhook_event(
     error_message: str | None = None,
 ) -> WebhookEvent:
     """Record webhook event for auditing and idempotency."""
+    from src.db.models.webhook_event import WebhookEventStatus
+
     event = WebhookEvent(
         provider=provider,
-        event_id=event_id,
+        provider_event_id=event_id,
         event_type=event_type,
         payload=payload,
-        processed=processed,
+        status=WebhookEventStatus.PROCESSED if processed else WebhookEventStatus.RECEIVED,
         processed_at=datetime.now(UTC) if processed else None,
         error_message=error_message,
     )
@@ -189,6 +191,9 @@ async def handle_stripe_webhook(
             processed=True,
         )
 
+        # Commit all changes
+        await db.commit()
+
         return {"status": "processed"}
 
     except Exception as e:
@@ -208,6 +213,10 @@ async def handle_stripe_webhook(
             processed=False,
             error_message=str(e),
         )
+
+        # Commit the error recording
+        await db.commit()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Webhook processing failed",
@@ -421,6 +430,9 @@ async def handle_square_webhook(
             processed=True,
         )
 
+        # Commit all changes
+        await db.commit()
+
         return {"status": "processed"}
 
     except Exception as e:
@@ -434,6 +446,10 @@ async def handle_square_webhook(
             processed=False,
             error_message=str(e),
         )
+
+        # Commit the error recording
+        await db.commit()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Webhook processing failed",
@@ -483,13 +499,112 @@ async def handle_toast_webhook(
     payload = await request.json()
     event_id = payload.get("webhookId", "")
     event_type = payload.get("eventType", "")
+    location_id = payload.get("locationId", "")
 
     tenant_id = payload.get("tenant_id") or payload.get("tenantId")
     if tenant_id:
         await set_tenant_context(db, tenant_id)
 
-    logger.info("Received Toast webhook", event_id=event_id, event_type=event_type)
+    logger.info("Received Toast webhook", event_id=event_id, event_type=event_type, location_id=location_id)
 
-    # TODO: Implement Toast webhook processing
+    # Idempotency check
+    if await _is_event_processed(db, "toast", event_id):
+        logger.info("Toast webhook already processed", event_id=event_id)
+        return {"status": "already_processed"}
 
-    return {"status": "received"}
+    # Resolve tenant_id if not provided in payload
+    if not tenant_id and location_id:
+        # Try to find tenant by location_id
+        result = await db.execute(
+            select(Restaurant.tenant_id)
+            .join(POSConnection, POSConnection.restaurant_id == Restaurant.id)
+            .where(POSConnection.location_id == location_id)
+        )
+        tenant_id = result.scalar_one_or_none()
+        if tenant_id:
+            await set_tenant_context(db, tenant_id)
+
+    try:
+        # Process event by type
+        if event_type == "order.updated":
+            await _handle_toast_order_updated(db, payload)
+        else:
+            logger.debug("Unhandled Toast event type", event_type=event_type)
+
+        # Record successful processing
+        await _record_webhook_event(
+            db,
+            provider="toast",
+            event_id=event_id,
+            event_type=event_type,
+            payload=payload,
+            processed=True,
+        )
+
+        # Commit all changes
+        await db.commit()
+
+        return {"status": "processed"}
+
+    except Exception as e:
+        logger.error(
+            "Error processing Toast webhook",
+            event_id=event_id,
+            event_type=event_type,
+            error=str(e),
+        )
+        # Record failed processing
+        await _record_webhook_event(
+            db,
+            provider="toast",
+            event_id=event_id,
+            event_type=event_type,
+            payload=payload,
+            processed=False,
+            error_message=str(e),
+        )
+
+        # Commit the error recording
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook processing failed",
+        )
+
+
+async def _handle_toast_order_updated(db: AsyncSession, payload: dict) -> None:
+    """Handle Toast order status update."""
+    data = payload.get("data", {})
+    toast_order_id = data.get("orderId") or data.get("order_id")
+    status = data.get("status")
+
+    logger.info(
+        "Toast order updated", toast_order_id=toast_order_id, status=status
+    )
+
+    # Map Toast state to internal status
+    status_map = {
+        "OPEN": OrderStatus.SENT_TO_POS,
+        "IN_PROGRESS": OrderStatus.PREPARING,
+        "READY_FOR_PICKUP": OrderStatus.READY,
+        "COMPLETED": OrderStatus.COMPLETED,
+        "CANCELED": OrderStatus.CANCELED,
+        "FAILED": OrderStatus.FAILED,
+    }
+
+    new_status = status_map.get(status.upper() if status else None)
+    if not new_status:
+        return
+
+    # Update order
+    result = await db.execute(
+        select(Order).where(Order.pos_order_id == toast_order_id)
+    )
+    order = result.scalar_one_or_none()
+
+    if order:
+        order.status = new_status
+        order.pos_status = status
+        order.updated_at = datetime.now(UTC)
+        logger.info("Order status updated", order_id=str(order.id), status=new_status.value)

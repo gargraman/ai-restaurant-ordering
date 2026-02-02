@@ -22,6 +22,7 @@ from src.db.base import AsyncSessionLocal
 from src.db.models.order import Order, OrderStatus
 from src.db.models.pos_connection import POSConnection
 from src.db.models.restaurant import Restaurant
+from src.db.session import set_tenant_context
 from src.orders.state_machine import OrderStateMachine
 from src.pos.models import POSOrderRequest, POSOrderLineItem
 from src.tasks.celery_app import celery_app
@@ -181,6 +182,9 @@ async def _send_order_to_pos_async(task: Task, order_id: str) -> dict[str, Any]:
                 log.error("Order not found")
                 raise Reject(f"Order {order_id} not found", requeue=False)
 
+            # Set tenant context for RLS
+            await set_tenant_context(db, order.tenant_id)
+
             # Validate order status
             if order.status != OrderStatus.PAID:
                 log.warning(
@@ -231,9 +235,17 @@ async def _send_order_to_pos_async(task: Task, order_id: str) -> dict[str, Any]:
 
             log.info("Sending order to POS", provider=pos_connection.provider.value)
 
-            # Send order to POS
+            # Send order to POS with timeout
             try:
-                pos_result = await adapter.inject_order(order_request)
+                # Add timeout to prevent hanging operations
+                import asyncio
+                pos_result = await asyncio.wait_for(adapter.inject_order(order_request), timeout=30.0)
+            except asyncio.TimeoutError:
+                log.error("POS order injection timed out", timeout=30.0)
+                state_machine = OrderStateMachine(order)
+                state_machine.record_pos_retry(f"Retry {task.request.retries + 1}: Timeout after 30s")
+                await db.commit()
+                raise POSTemporaryError("POS order injection timed out after 30 seconds")
             except POSTemporaryError:
                 # Record retry and re-raise
                 state_machine = OrderStateMachine(order)
@@ -464,6 +476,9 @@ async def _sync_menu_catalog_async(task: Task, restaurant_id: str) -> dict[str, 
             if not restaurant:
                 log.error("Restaurant not found")
                 return {"status": "error", "message": "Restaurant not found"}
+
+            # Set tenant context for RLS
+            await set_tenant_context(db, restaurant.tenant_id)
 
             pos_connection = restaurant.pos_connection
             if not pos_connection or not pos_connection.is_ready:
