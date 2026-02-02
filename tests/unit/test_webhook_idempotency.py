@@ -68,16 +68,10 @@ class TestWebhookIdempotency:
     @pytest.mark.asyncio
     async def test_is_event_processed_false_when_unprocessed(self, mock_db):
         """Test _is_event_processed returns False when event exists but not processed."""
-        unprocessed_event = WebhookEvent(
-            provider=WebhookProvider.STRIPE,
-            provider_event_id="evt_test123",
-            event_type="payment_intent.succeeded",
-            status=WebhookEventStatus.RECEIVED,
-            payload={},
-        )
-
+        # When querying for PROCESSED/IGNORED events, an event with RECEIVED status won't match
+        # So the database should return None
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = unprocessed_event
+        mock_result.scalar_one_or_none.return_value = None  # No matching records
         mock_db.execute.return_value = mock_result
 
         # Execute
