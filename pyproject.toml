@@ -17,6 +17,11 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "asyncpg>=0.29.0",
 
+    # ORM & Migrations
+    "sqlalchemy[asyncio]>=2.0.25",
+    "alembic>=1.13.0",
+    "greenlet>=3.0.0",
+
     # Session & Cache
     "redis>=5.0.0",
 
@@ -35,6 +40,20 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.26.0",
     "tenacity>=8.2.3",
+
+    # Authentication
+    "python-jose[cryptography]>=3.3.0",
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
+
+    # Payments
+    "stripe>=9.0.0",
+
+    # Email Notifications
+    "sendgrid>=6.11.0",
+
+    # AWS Services
+    "boto3>=1.34.0",
 
     # Monitoring
     "prometheus-client>=0.20.0",

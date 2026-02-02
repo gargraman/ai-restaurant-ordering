@@ -9,158 +9,158 @@ Conversational Hybrid Search & RAG System for Catering Menus. Python 3.11+ with 
 ## Commands
 
 ```bash
-# Start infrastructure (OpenSearch, PostgreSQL+pgvector, Redis, Neo4j)
-docker-compose -f deployment/docker-compose.yml up -d
+# Infrastructure
+docker-compose -f deployment/docker-compose.yml up -d                    # Start core services
+docker-compose -f deployment/docker-compose.yml --profile tools up -d    # + Redis Commander, OpenSearch Dashboards
+docker-compose -f deployment/docker-compose.monitoring.yml up -d         # + Prometheus, Grafana, Jaeger
 
-# Start with optional GUI tools (Redis Commander, OpenSearch Dashboards)
-docker-compose -f deployment/docker-compose.yml --profile tools up -d
+# Development
+pip install -e ".[dev]"                                                  # Install with dev dependencies
+uvicorn src.api.main:app --reload                                        # Start API (needs OPENAI_API_KEY)
 
-# Start monitoring stack (Prometheus, Grafana, Jaeger)
-docker-compose -f deployment/docker-compose.monitoring.yml up -d
+# Testing
+pytest tests/ -v --cov=src                                               # All tests with coverage
+pytest tests/unit/test_rrf.py -v                                         # Single file
+pytest tests/unit/test_conversation_nodes.py::TestContextResolverNode::test_loads_session_context -v  # Single test
+pytest tests/unit/ -k "intent" -v                                        # Tests matching pattern
 
-# Install dependencies
-pip install -e ".[dev]"
+# Code Quality
+ruff check . --fix                                                       # Lint and auto-fix
+mypy src/                                                                # Type checking
 
-# Run tests with coverage
-pytest tests/ -v --cov=src
-
-# Run single test file
-pytest tests/unit/test_rrf.py -v
-
-# Run single test
-pytest tests/unit/test_conversation_nodes.py::TestContextResolverNode::test_loads_session_context -v
-
-# Format and lint
-ruff check . --fix
-
-# Type checking
-mypy src/
-
-# Start API server (requires OPENAI_API_KEY environment variable)
-uvicorn src.api.main:app --reload
-
-# Data ingestion (OpenSearch + pgvector)
-python scripts/run_ingestion.py data/sample/ --skip-embeddings
-python scripts/run_ingestion.py <source> --recreate --batch-size 1000
-
-# Neo4j graph ingestion
-python scripts/ingest_neo4j.py data/sample/ --clear --create-relationships
+# Data Ingestion
+python scripts/run_ingestion.py data/sample/ --skip-embeddings           # Without OpenAI API
+python scripts/run_ingestion.py <source> --recreate --batch-size 1000    # Full ingestion
+python scripts/ingest_neo4j.py data/sample/ --clear --create-relationships  # Neo4j graph
 ```
 
 ## Architecture
 
-### LangGraph Pipeline Flow
+### Request Flow
 
 ```
-User Input → Context Resolver (Redis session) → Intent Detector
-    ↓
-[Router based on intent: search/filter/clarify/graph]
-    ├→ Clarification → END
-    ├→ Filter Previous → Filter Node → Context Selector
-    ├→ Graph Search (Neo4j) → Context Selector (if enabled)
-    └→ Search → Query Rewriter → [BM25 + Vector Search]
-                                        ↓
-                              RRF Merge (2-way or 3-way) → Context Selector → RAG Generator → END
+POST /chat/search → SessionManager.get_or_create_session → LangGraph Pipeline → Response
+
+LangGraph Pipeline:
+  Context Resolver → Intent Detector → [Router]
+                                         ├→ clarify → Clarification → END
+                                         ├→ filter → Filter Previous → Context Selector
+                                         ├→ graph → Graph Search → Context Selector (if enabled)
+                                         └→ search → Query Rewriter → BM25 + Vector → RRF Merge
+                                                                                        ↓
+                                                    Context Selector → RAG Generator → END
 ```
 
 ### Key Modules
 
-- **`src/langgraph/`** - Orchestration pipeline
-  - `graph.py` - Graph definition, routing logic, conditional edges
-  - `nodes.py` - 12 node implementations:
-    - `context_resolver_node` - Load session from Redis
-    - `intent_detector_node` - Classify intent (search/filter/clarify/compare)
-    - `query_rewriter_node` - Entity extraction, query expansion, graph query detection
-    - `bm25_search_node` - OpenSearch lexical search
-    - `vector_search_node` - pgvector semantic search
-    - `rrf_merge_node` - 2-way RRF fusion (BM25 + vector)
-    - `rrf_merge_3way_node` - 3-way RRF fusion (BM25 + vector + graph)
-    - `context_selector_node` - Diversity + token budget enforcement
-    - `rag_generator_node` - LLM response generation
-    - `clarification_node` - Request more info
-    - `filter_previous_node` - Filter existing results
-    - `graph_search_node` - Neo4j relationship queries
-  - `prompts.py` - LLM prompts for intent detection, entity extraction, query expansion, RAG generation
+| Module | Purpose | Key Files |
+|--------|---------|-----------|
+| `src/langgraph/` | LangGraph pipeline orchestration | `graph.py`, `nodes.py`, `prompts.py` |
+| `src/search/` | Search implementations | `bm25.py`, `vector.py`, `graph.py`, `hybrid.py` |
+| `src/session/` | Redis session management | `manager.py` |
+| `src/ingestion/` | Data pipeline | `pipeline.py`, `indexer.py`, `embeddings.py` |
+| `src/api/` | FastAPI endpoints | `main.py`, `routers/`, `models/` |
+| `src/config/` | Settings via env vars | `settings.py` |
+| `src/monitoring/` | Observability | `middleware.py`, `tracing.py`, `system_metrics.py` |
+| `src/auth/` | JWT auth, OAuth | `jwt.py`, `oauth.py`, `password.py` |
+| `src/payments/` | Stripe integration | `charges.py`, `webhooks.py` |
+| `src/pos/` | Square POS | `square_oauth.py`, `square_integration.py` |
+| `src/orders/` | Order state machine | `state_machine.py`, `cart_manager.py` |
 
-- **`src/search/`** - Search implementations
-  - `bm25.py` - OpenSearch lexical search with fuzzy matching, `exclude_restaurant_id` filter
-  - `vector.py` - pgvector semantic search with OpenAI embeddings
-  - `graph.py` - Neo4j graph search (restaurant_items, similar_restaurants, pairings, catering_packages)
-  - `hybrid.py` - RRF fusion algorithm
+### Infrastructure Ports
 
-- **`src/ingestion/`** - Data pipeline
-  - `pipeline.py` - Orchestration: JSON → IndexDocument → embeddings → OpenSearch + pgvector
-  - `neo4j_indexer.py` - Neo4j ingestion with relationship creation (PAIRS_WITH, SIMILAR_TO)
-
-- **`src/session/manager.py`** - Redis-based session storage (entities, conversation history, previous results)
-
-- **`src/api/main.py`** - FastAPI endpoints: `/chat/search`, `/session/{id}`, `/session/{id}/feedback`, `/health`, `/metrics`
-
-- **`src/config/settings.py`** - Pydantic BaseSettings with environment variable loading
-
-- **`src/monitoring/`** - Observability and metrics
-  - `middleware.py` - FastAPI middleware for request tracking
-  - `system_metrics.py` - CPU, memory, disk metrics
-  - `database_metrics.py` - PostgreSQL connection pool monitoring
-  - `pgvector_metrics.py` - Vector search performance tracking
-  - `tracing.py` - OpenTelemetry distributed tracing setup
-
-### Infrastructure
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| OpenSearch | 9200 | BM25 lexical search index |
-| PostgreSQL+pgvector | 5433 | Vector similarity search |
-| Redis | 6379 | Session state storage |
-| Neo4j | 7474 (HTTP), 7687 (Bolt) | Graph relationships |
-| API Server | 8000 | FastAPI backend |
-| UI (Next.js) | 3000 | Web interface |
-| Redis Commander | 8081 | Redis GUI (optional, `--profile tools`) |
-| OpenSearch Dashboards | 5601 | OpenSearch GUI (optional, `--profile tools`) |
-| Prometheus | 9090 | Metrics collection (monitoring stack) |
-| Grafana | 3000 | Metrics visualization (monitoring stack) |
-| Jaeger | 16686 | Distributed tracing UI (monitoring stack) |
+| Service | Port | Notes |
+|---------|------|-------|
+| OpenSearch | 9200 | BM25 lexical search |
+| PostgreSQL+pgvector | 5433 | Vector search (not 5432) |
+| Redis | 6379 | Session storage |
+| Neo4j | 7474/7687 | Graph (HTTP/Bolt) |
+| API Server | 8000 | FastAPI |
+| Next.js UI | 3000 | Web interface |
 
 ### Feature Flags
 
-```python
-enable_graph_search: bool = False      # Enable Neo4j graph search
-enable_3way_rrf: bool = False          # Enable 3-way RRF fusion (BM25 + vector + graph)
-otel_tracing_enabled: bool = True      # Enable OpenTelemetry distributed tracing
-```
-
-### Design Principles
-
-1. All workflow orchestration in LangGraph, not in prompts
-2. Redis is single source of session context
-3. RRF is only ranking authority - no post-RRF reordering without explicit reranker
-4. Every node must be testable (pure functions with defined inputs/outputs)
-5. Nodes must be idempotent (same input → same output)
-6. Token budget enforced in context_selector_node (max_context_tokens - 500 buffer)
+Set via environment variables:
+- `ENABLE_GRAPH_SEARCH=false` - Neo4j graph search
+- `ENABLE_3WAY_RRF=false` - 3-way RRF fusion (BM25 + vector + graph)
+- `ENABLE_PAYMENTS=false` - Stripe payments
+- `ENABLE_POS_INTEGRATION=false` - Square POS
 
 ### Search Configuration
 
-- BM25 multi-field search: item_name(^3), item_description(^2), text, restaurant_name
-- Vector: OpenAI text-embedding-3-small (1536 dimensions), IVFFlat index
-- Graph: Neo4j Cypher queries for relationship traversal
-- RRF: k=60, configurable weights (default BM25:1.0, Vector:1.0, Graph:1.0)
-- Context selection: max 8 items, max 3 per restaurant, max 4000 tokens
+- **BM25**: Multi-field with boosts: `item_name^3`, `item_description^2`, `text`, `restaurant_name`
+- **Vector**: OpenAI `text-embedding-3-small` (1536d), pgvector IVFFlat index
+- **RRF**: `k=60`, weights: `bm25_weight=1.0`, `vector_weight=1.0`, `graph_weight=1.0`
+- **Context**: Max 8 items, max 3 per restaurant, max 4000 tokens (with 500 buffer)
 
-### Graph Search Query Types
+### Graph Query Types
 
-Detected via regex patterns in `query_rewriter_node`:
+Detected via regex in `query_rewriter_node`:
+- `restaurant_items`: "more from this restaurant", "what else do they have"
+- `similar_restaurants`: "similar restaurants", "restaurants like this"
+- `pairing`: "pairs with", "goes with", "sides for"
+- `catering_packages`: "catering package", "full meal for"
 
-| Query Type | Trigger Patterns | Example |
-|------------|------------------|---------|
-| `restaurant_items` | "more from this restaurant", "what else do they have" | "Show me more from this restaurant" |
-| `similar_restaurants` | "similar restaurants", "restaurants like this" | "Similar restaurants nearby" |
-| `pairing` | "pairs with", "goes with", "sides for" | "What pairs well with this?" |
-| `catering_packages` | "catering package", "full meal for" | "Complete catering package for 50" |
+## Design Principles
 
-## Development Notes
+1. **Orchestration in Code** - LangGraph handles workflow, not prompts
+2. **Redis = Session Truth** - All session context in Redis, loaded at pipeline entry
+3. **RRF = Ranking Authority** - No post-RRF reordering without explicit reranker
+4. **Pure Nodes** - Every node is testable with defined inputs/outputs
+5. **Idempotent** - Same input produces same output
+6. **Token Budget** - Enforced in `context_selector_node` (max_tokens - 500 buffer)
+7. **Async Throughout** - asyncpg, redis.asyncio, neo4j async, FastAPI
 
-- Async/await throughout (asyncpg, redis.asyncio, neo4j async, FastAPI)
-- Structured logging with structlog
-- Tests use pytest-asyncio with `asyncio_mode = "auto"`
-- Configuration via environment variables (see `.env.example`)
-- Python 3.11+ required (uses modern type hints like `list[str]`, `dict[str, Any]`)
+## Code Patterns
+
+### Async Database Access
+```python
+# Vector search (pgvector)
+async with self.pool.acquire() as conn:
+    rows = await conn.fetch(query, *params)
+
+# Session (Redis)
+data = await self.client.get(key)
+await self.client.setex(key, ttl, data)
+```
+
+### LangGraph Node Pattern
+```python
+async def my_node(state: GraphState) -> GraphState:
+    """Each node receives state, returns updated state."""
+    # Extract needed values
+    user_input = state.get("user_input", "")
+
+    # Do work
+    result = await some_operation(user_input)
+
+    # Return only the keys you want to update
+    return {"my_result": result}
+```
+
+### Pydantic Models for LLM Output
+```python
+class IntentDetectionResult(BaseModel):
+    intent: str = Field(pattern=r"^(search|filter|clarify|compare)$")
+    is_follow_up: bool = False
+    confidence: float = Field(ge=0.0, le=1.0)
+```
+
+## Testing
+
+- pytest-asyncio with `asyncio_mode = "auto"`
+- Mock external services (OpenAI, Neo4j, Stripe, Redis)
+- Coverage enabled by default (`--cov=src`)
+- Unit tests in `tests/unit/`, integration in `tests/integration/`
+
+## Environment Variables
+
+Required:
+- `OPENAI_API_KEY` - For embeddings and LLM
+
+Optional (see `src/config/settings.py` for defaults):
+- `POSTGRES_*`, `REDIS_*`, `OPENSEARCH_*`, `NEO4J_*` - Database connections
+- `JWT_SECRET_KEY` - Required for auth (min 32 chars)
+- `STRIPE_*` - Payment processing
+- `SQUARE_*` - POS integration
+- `SENDGRID_API_KEY` - Email notifications

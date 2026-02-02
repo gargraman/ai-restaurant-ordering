@@ -178,12 +178,104 @@ services:
     networks:
       - hybrid-search-network
 
+  # Celery Worker for async task processing
+  celery-worker:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: hybrid-search-celery-worker
+    command: celery -A src.tasks.celery_app worker --loglevel=info --concurrency=4 -Q orders.high,catalog.low,dlq.medium,notifications.medium,default
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=hybrid_search
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      # Stripe settings (set in .env or secrets)
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      # Square settings
+      - SQUARE_APPLICATION_ID=${SQUARE_APPLICATION_ID:-}
+      - SQUARE_APPLICATION_SECRET=${SQUARE_APPLICATION_SECRET:-}
+      - SQUARE_ENVIRONMENT=${SQUARE_ENVIRONMENT:-sandbox}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../src:/app/src:ro
+    networks:
+      - hybrid-search-network
+    restart: unless-stopped
+
+  # Celery Beat for periodic task scheduling
+  celery-beat:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: hybrid-search-celery-beat
+    command: celery -A src.tasks.celery_app beat --loglevel=info
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    depends_on:
+      - redis
+      - celery-worker
+    volumes:
+      - celery_beat_data:/tmp
+    networks:
+      - hybrid-search-network
+    restart: unless-stopped
+
+  # Flower for Celery monitoring (optional)
+  flower:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: hybrid-search-flower
+    command: celery -A src.tasks.celery_app flower --port=5555
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - hybrid-search-network
+    profiles:
+      - tools
+
+  # Stripe Mock for local development/testing
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    container_name: hybrid-search-stripe-mock
+    ports:
+      - "12111:12111"
+      - "12112:12112"
+    networks:
+      - hybrid-search-network
+    profiles:
+      - dev
+
 volumes:
   opensearch_data:
   postgres_data:
   redis_data:
   neo4j_data:
   neo4j_logs:
+  celery_beat_data:
 
 networks:
   hybrid-search-network:

@@ -29,6 +29,8 @@ from src.monitoring.system_metrics import system_metrics_collector
 from src.monitoring.database_monitor import stop_db_metrics_collector
 from src.monitoring.tracing import setup_tracing
 from src.metrics import increment_active_sessions, decrement_active_sessions, collect_system_metrics
+from src.middleware.tenant_context import TenantContextMiddleware
+from src.auth import init_jwt_service
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -44,6 +46,17 @@ async def lifespan(app: FastAPI):
     global session_manager, hybrid_searcher
 
     logger.info("application_starting", app_name=settings.app_name)
+
+    # Initialize JWT service
+    if settings.jwt_secret_key:
+        init_jwt_service(
+            secret_key=settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+            access_token_expire_hours=settings.jwt_access_token_expire_hours,
+            refresh_token_expire_days=settings.jwt_refresh_token_expire_days,
+        )
+    else:
+        logger.warning("jwt_secret_key_missing", message="JWT service not initialized")
 
     # Initialize connections
     session_manager = SessionManager()
@@ -92,6 +105,9 @@ def create_app() -> FastAPI:
 
     # Tracing (Phase 2)
     setup_tracing(app)
+
+    # Add tenant context middleware (Phase 0 - RLS enforcement)
+    app.add_middleware(TenantContextMiddleware)
 
     # Add monitoring middleware
     app.add_middleware(MetricsMiddleware)

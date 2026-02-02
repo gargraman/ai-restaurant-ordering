@@ -81,10 +81,61 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Authentication / JWT
+    jwt_secret_key: str = ""  # Must be set in production (min 32 chars)
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_hours: int = 24
+    jwt_refresh_token_expire_days: int = 7
+
     # Tracing (Phase 2)
     otel_tracing_enabled: bool = True
     otel_service_name: str = "hybrid-search-v2"
     otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+
+    # Stripe Payments
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_api_version: str = "2024-12-18.acacia"
+
+    # Payment Configuration
+    platform_fee_percentage: float = 2.5  # Platform fee as percentage
+    platform_fee_fixed_cents: int = 30  # Fixed fee per order in cents
+    stripe_processing_fee_percentage: float = 2.9  # Stripe's fee
+    stripe_processing_fee_fixed_cents: int = 30  # Stripe's fixed fee
+
+    # Square POS Integration
+    square_application_id: str = ""
+    square_application_secret: str = ""
+    square_environment: Literal["sandbox", "production"] = "sandbox"
+    square_oauth_redirect_uri: str = ""  # e.g., https://yourdomain.com/api/pos/square/callback
+    square_webhook_signature_key: str = ""
+
+    # POS Feature Flags
+    enable_pos_integration: bool = False
+    enable_payments: bool = False
+
+    # AWS Configuration
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_kms_key_id: str = ""  # KMS key for encrypting POS credentials
+
+    # SendGrid Email Notifications
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = "noreply@yourdomain.com"
+    sendgrid_from_name: str = "Order Platform"
+    sendgrid_from_phone: str = ""
+
+    # SMTP Email (fallback/legacy)
+    smtp_server: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    sender_email: str = ""
+
+    # Legacy Encryption (deprecated - use AWS KMS)
+    encryption_key: str = ""
 
     @property
     def postgres_dsn(self) -> str:
@@ -114,6 +165,11 @@ class Settings(BaseSettings):
         """OpenSearch URL."""
         protocol = "https" if self.opensearch_use_ssl else "http"
         return f"{protocol}://{self.opensearch_host}:{self.opensearch_port}"
+
+    @property
+    def ENCRYPTION_KEY(self) -> str:
+        """Encryption key for credential encryption."""
+        return self.encryption_key
 
 
 @lru_cache
