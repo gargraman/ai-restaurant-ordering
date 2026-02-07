@@ -4,10 +4,10 @@
 
 ### Adding Support for New Filter Type
 **Files to modify:**
-1. `src/langgraph/nodes.py` → query_rewriter_node (line 270)
-2. `src/search/bm25.py` → BM25Searcher.search() (line 100)
-3. `src/search/vector.py` → VectorSearcher.search() (line 120)
-4. `src/langgraph/nodes.py` → filter_previous_node (line 570)
+1. `src/langgraph/nodes.py` → query_rewriter_node (around line 270)
+2. `src/search/bm25.py` → BM25Searcher.search() (around line 100)
+3. `src/search/vector.py` → VectorSearcher.search() (around line 120)
+4. `src/langgraph/nodes.py` → filter_previous_node (around line 570)
 5. `src/models/state.py` → SearchFilters TypedDict
 
 **Example: Add "spice level" filter**
@@ -60,6 +60,74 @@ GRAPH_QUERY_PATTERNS = {
     "cuisine_combinations": [
         r"restaurants with both (.+) and (.+)",
         r"cuisine combinations",
+```
+
+---
+
+### Adding Tenant Context to New Endpoints
+**Files to modify:**
+1. `src/api/routers/your_router.py` → Add dependency to your endpoint
+2. `src/middleware/tenant_context.py` → Review tenant context implementation
+3. `src/db/session.py` → Ensure RLS context is set
+
+**Example: Add tenant context to new endpoint**
+```python
+from src.middleware.tenant_context import get_tenant_context
+
+@router.get("/your-endpoint")
+async def your_endpoint(
+    current_user: User = Depends(get_current_user),
+    tenant_ctx: TenantContext = Depends(get_tenant_context)  # This ensures tenant context is set
+):
+    # Your implementation here
+    # tenant_ctx contains tenant_id, role, restaurant_id, etc.
+    pass
+```
+
+---
+
+### Adding New POS Integration
+**Files to modify:**
+1. `src/pos/adapters/` → Create new adapter following Square pattern
+2. `src/pos/factory.py` → Add factory method for new POS
+3. `src/orders/service.py` → Update order sending logic
+4. `src/api/routers/webhooks.py` → Add webhook handler for new POS
+
+**Example: Add new POS adapter**
+```python
+# src/pos/adapters/new_pos.py
+class NewPosAdapter:
+    def __init__(self, credentials: dict):
+        # Initialize with credentials
+        pass
+    
+    async def send_order(self, order: CanonicalOrder) -> dict:
+        # Convert canonical order to NewPOS format and send
+        pass
+    
+    async def get_menu(self, restaurant_id: str) -> list:
+        # Retrieve menu from NewPOS system
+        pass
+```
+
+---
+
+### Adding New Notification Channel
+**Files to modify:**
+1. `src/notifications/channels/` → Add new channel implementation
+2. `src/notifications/service.py` → Update notification dispatcher
+3. `src/config/settings.py` → Add configuration for new channel
+
+**Example: Add new notification channel**
+```python
+# src/notifications/channels/push_channel.py
+class PushChannel:
+    async def send(self, recipient: str, message: str, metadata: dict = None):
+        # Implementation for push notifications
+        pass
+
+# Update notification service to include new channel
+```
     ],
 }
 

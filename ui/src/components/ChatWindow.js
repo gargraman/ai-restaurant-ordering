@@ -101,8 +101,10 @@ const ChatWindow = ({ sessionId }) => {
         analyticsTracker.trackZeroResultQuery(userInput, sessionId);
       }
     } catch (err) {
-      setError(err.message || 'An error occurred while processing your request.');
-      analyticsTracker.trackError(err.message || 'Search API error', 'search_error', sessionId);
+      // More detailed error handling
+      const errorMessage = err.response?.data?.detail || err.message || 'An error occurred while processing your request.';
+      setError(errorMessage);
+      analyticsTracker.trackError(errorMessage, 'search_error', sessionId);
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +129,13 @@ const ChatWindow = ({ sessionId }) => {
       role="main"
       aria-label="Restaurant discovery chat interface"
     >
-      <MessageList messages={messages} isLoading={isLoading} error={error} sessionId={sessionId} />
+      <div 
+        className="flex-1 overflow-y-auto"
+        aria-live="polite"
+        aria-relevant="additions"
+      >
+        <MessageList messages={messages} isLoading={isLoading} error={error} sessionId={sessionId} />
+      </div>
       <InputArea onSend={handleSend} disabled={isLoading} />
       <div ref={messagesEndRef} />
     </div>

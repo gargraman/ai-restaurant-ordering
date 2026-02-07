@@ -1,4 +1,4 @@
-# Code Flow & Architecture Guide
+# System Architecture Guide
 
 **Target Audience:** Developers understanding codebase for contributions/enhancements
 **Document Scope:** Key files, functions, flows, and decision points
@@ -12,11 +12,17 @@ FastAPI (REST API)
     ↓
 Session Manager (Redis)
     ↓
-LangGraph Pipeline (12 nodes)
+LangGraph Pipeline (12+ nodes)
     ↓
 Hybrid Search (BM25 + Vector + Graph)
     ↓
 RAG Generator (GPT-4)
+    ↓
+Order Management (Multi-tenant)
+    ↓
+Payment Processing (Stripe Connect)
+    ↓
+POS Integration (Square, Toast)
     ↓
 Monitoring & Metrics (Prometheus/Grafana)
 ```
@@ -27,10 +33,11 @@ Monitoring & Metrics (Prometheus/Grafana)
 
 | File | Purpose | Key Functions |
 |------|---------|---|
-| `src/api/main.py` | HTTP API entry | `/chat/search`, `/session/{id}`, metrics endpoint |
+| `src/api/main.py` | HTTP API entry | `/chat/search`, `/session/{id}`, metrics endpoint, tenant context |
 | `src/langgraph/graph.py` | Pipeline orchestration | `create_search_graph()`, routing logic |
-| `src/langgraph/nodes.py` | Pipeline node implementations | 12 nodes processing logic |
+| `src/langgraph/nodes.py` | Pipeline node implementations | 12+ nodes processing logic |
 | `src/session/manager.py` | Redis session CRUD | `get_or_create_session()`, `save_session()` |
+| `src/session/tenant_session.py` | Tenant-scoped session management | `get_tenant_session()`, `save_tenant_session()` |
 | `src/search/bm25.py` | OpenSearch lexical search | `BM25Searcher.search()` |
 | `src/search/vector.py` | pgvector semantic search | `VectorSearcher.search()` |
 | `src/search/hybrid.py` | Multi-source merge | `HybridSearcher.search()`, RRF logic |
@@ -39,6 +46,28 @@ Monitoring & Metrics (Prometheus/Grafana)
 | `src/ingestion/pipeline.py` | Data import pipeline | `run_ingestion()` |
 | `src/monitoring/middleware.py` | HTTP request monitoring | Metrics middleware |
 | `src/metrics.py` | Prometheus metrics | Metric definitions and recording functions |
+| `src/orders/service.py` | Order lifecycle management | `create_order()`, `update_order_status()` |
+| `src/orders/state_machine.py` | Order state transitions | `can_transition_to()`, `transition_to()` |
+| `src/payments/service.py` | Payment processing | `create_payment_intent()`, `process_webhook()` |
+| `src/middleware/tenant_context.py` | Tenant context enforcement | `set_tenant_context()` |
+| `src/db/session.py` | Database session management | `set_tenant_context()`, RLS enforcement |
+| `src/encryption/kms.py` | Data encryption | `encrypt()`, `decrypt()` |
+
+---
+
+## Multi-Tenancy & Security Architecture
+
+### Tenant Isolation
+- **JWT-Based Tenancy**: Tenant context derived from JWT claims (`tenant_id`, `role`, `restaurant_id`)
+- **API Middleware**: `TenantContextMiddleware` enforces tenant access in all endpoints
+- **Database RLS**: Row-Level Security policies enforce tenant isolation at database level
+- **Redis Scoping**: Session data scoped by tenant ID (`cart:{tenant_id}:{session_id}`)
+
+### Security Layers
+1. **Authentication Layer**: JWT tokens with role-based access control
+2. **API Enforcement**: Middleware validates tenant access before processing requests
+3. **Database Enforcement**: RLS policies prevent cross-tenant data access
+4. **Credential Protection**: AWS KMS encryption for sensitive POS credentials
 
 ---
 

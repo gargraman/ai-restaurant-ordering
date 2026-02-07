@@ -6,7 +6,7 @@
 
 ## 📚 Main Documentation Files
 
-### [CODE_FLOW.md](CODE_FLOW.md) - System Architecture & Execution Flows
+### [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - System Architecture & Execution Flows
 **120 sections | 852 lines | 25 KB**
 
 Comprehensive guide to how the system works end-to-end.
@@ -38,7 +38,7 @@ Comprehensive guide to how the system works end-to-end.
 
 ---
 
-### [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Quick Reference & How-To
+### [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - Quick Reference & How-To
 **35 sections | 409 lines | 9.5 KB**
 
 Practical, task-focused guide for daily development work.
@@ -64,7 +64,7 @@ Practical, task-focused guide for daily development work.
 
 ---
 
-### [FUNCTION_MAP.md](FUNCTION_MAP.md) - Complete Dependency & Function Map
+### [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - Complete Dependency & Function Map
 **45 sections | 601 lines | 18 KB**
 
 Function-level navigation and dependency tracking.
@@ -97,49 +97,49 @@ Function-level navigation and dependency tracking.
 ## 🎯 Quick Navigation by Task
 
 ### "I'm new to the codebase"
-1. Read: [CODE_FLOW.md](CODE_FLOW.md) - System Architecture Overview
-2. Read: [CODE_FLOW.md](CODE_FLOW.md) - Main Request Flow
-3. Skim: [FUNCTION_MAP.md](FUNCTION_MAP.md) - Entry Points
-4. Bookmark: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - File Map by Task
+1. Read: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - System Architecture Overview
+2. Read: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Main Request Flow
+3. Skim: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - Entry Points
+4. Bookmark: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - File Map by Task
 
 ### "I need to add a new filter"
-1. Check: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Adding Support for New Filter Type"
-2. Reference: [FUNCTION_MAP.md](FUNCTION_MAP.md) - Core Pipeline Nodes
-3. Verify: [CODE_FLOW.md](CODE_FLOW.md) - Query Rewriter Node
+1. Check: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Adding Support for New Filter Type"
+2. Reference: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - Core Pipeline Nodes
+3. Verify: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Query Rewriter Node
 
 ### "I'm debugging a problem"
-1. Use: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Debugging a Specific Request"
-2. Check: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Troubleshooting Matrix"
-3. Trace: [FUNCTION_MAP.md](FUNCTION_MAP.md) - dependency trees
-4. Review: [CODE_FLOW.md](CODE_FLOW.md) - Error Handling Patterns
+1. Use: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Debugging a Specific Request"
+2. Check: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Troubleshooting Matrix"
+3. Trace: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - dependency trees
+4. Review: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Error Handling Patterns
 
 ### "I need to optimize performance"
-1. Review: [CODE_FLOW.md](CODE_FLOW.md) - "Performance Considerations"
-2. Check: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Performance Checklist"
+1. Review: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - "Performance Considerations"
+2. Check: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Performance Checklist"
 3. Measure: latency breakdown against actual system
-4. Reference: [FUNCTION_MAP.md](FUNCTION_MAP.md) - call chains
+4. Reference: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - call chains
 
 ### "I'm implementing a new feature"
-1. Check: [CODE_FLOW.md](CODE_FLOW.md) - "Extension Points for Developers"
-2. Find files: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "File Map by Task"
-3. Copy template: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Modifying Node Logic"
-4. Understand flow: [FUNCTION_MAP.md](FUNCTION_MAP.md) - dependency trees
+1. Check: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - "Extension Points for Developers"
+2. Find files: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "File Map by Task"
+3. Copy template: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Modifying Node Logic"
+4. Understand flow: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - dependency trees
 
 ### "I need to understand session handling"
-1. Read: [CODE_FLOW.md](CODE_FLOW.md) - "Session Persistence"
-2. Review: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Session Management"
-3. Check: [FUNCTION_MAP.md](FUNCTION_MAP.md) - Session Management section
+1. Read: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - "Session Persistence"
+2. Review: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Session Management"
+3. Check: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - Session Management section
 
 ### "I'm adding tests"
-1. Check: [CODE_FLOW.md](CODE_FLOW.md) - "Testing Strategy"
-2. Review: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - "Running Tests"
-3. Reference: [FUNCTION_MAP.md](FUNCTION_MAP.md) - "Testing Dependencies"
+1. Check: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - "Testing Strategy"
+2. Review: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - "Running Tests"
+3. Reference: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) - "Testing Dependencies"
 
 ---
 
 ## 📊 Documentation Coverage
 
-| Component | CODE_FLOW | DEVELOPER_GUIDE | FUNCTION_MAP |
+| Component | SYSTEM_ARCHITECTURE | DEVELOPMENT_GUIDE | CODEBASE_REFERENCE |
 |-----------|-----------|-----------------|------------|
 | Architecture | ✅ (detailed) | ✅ (overview) | ✅ (dependencies) |
 | All 10 Nodes | ✅ (all) | ✅ (summary) | ✅ (dependencies) |
@@ -159,51 +159,51 @@ Function-level navigation and dependency tracking.
 ### By Topic
 
 **Request Handling**
-- Start: [CODE_FLOW.md](CODE_FLOW.md) → Main Request Flow section
-- Code: [FUNCTION_MAP.md](FUNCTION_MAP.md) → Entry Points section
+- Start: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Main Request Flow section
+- Code: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → Entry Points section
 
 **Pipeline Nodes**
-- Overview: [CODE_FLOW.md](CODE_FLOW.md) → Pipeline Nodes section
-- Detailed: [FUNCTION_MAP.md](FUNCTION_MAP.md) → Core Pipeline Nodes section
+- Overview: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Pipeline Nodes section
+- Detailed: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → Core Pipeline Nodes section
 
 **Search & Ranking**
-- Algorithm: [CODE_FLOW.md](CODE_FLOW.md) → Search Scoring & Ranking
-- Code: [FUNCTION_MAP.md](FUNCTION_MAP.md) → Search Implementations
+- Algorithm: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Search Scoring & Ranking
+- Code: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → Search Implementations
 
 **Conversation/Sessions**
-- Design: [CODE_FLOW.md](CODE_FLOW.md) → Session Persistence
-- Usage: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Session Management
-- Code: [FUNCTION_MAP.md](FUNCTION_MAP.md) → Session Management
+- Design: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Session Persistence
+- Usage: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Session Management
+- Code: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → Session Management
 
 **Configuration**
-- All settings: [CODE_FLOW.md](CODE_FLOW.md) → Configuration & Settings
-- How to change: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Configuration Changes
+- All settings: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Configuration & Settings
+- How to change: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Configuration Changes
 
 **Features & Extensions**
-- How to add: [CODE_FLOW.md](CODE_FLOW.md) → Extension Points
-- File map: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → File Map by Task
-- Example: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Adding New Filter Type
+- How to add: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Extension Points
+- File map: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → File Map by Task
+- Example: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Adding New Filter Type
 
 **Testing**
-- Strategy: [CODE_FLOW.md](CODE_FLOW.md) → Testing Strategy
-- Commands: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Running Tests
-- Setup: [FUNCTION_MAP.md](FUNCTION_MAP.md) → Testing Dependencies
+- Strategy: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Testing Strategy
+- Commands: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Running Tests
+- Setup: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → Testing Dependencies
 
 **Debugging**
-- Guide: [CODE_FLOW.md](CODE_FLOW.md) → Debugging Guide
-- Procedures: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Debugging a Specific Request
-- Traces: [FUNCTION_MAP.md](FUNCTION_MAP.md) → all dependency trees
+- Guide: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Debugging Guide
+- Procedures: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Debugging a Specific Request
+- Traces: [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) → all dependency trees
 
 **Performance**
-- Analysis: [CODE_FLOW.md](CODE_FLOW.md) → Performance Considerations
-- Checklist: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) → Performance Checklist
-- Optimization: [CODE_FLOW.md](CODE_FLOW.md) → Optimization Opportunities
+- Analysis: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Performance Considerations
+- Checklist: [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) → Performance Checklist
+- Optimization: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) → Optimization Opportunities
 
 ---
 
 ## 📋 Document Features
 
-### CODE_FLOW.md
+### SYSTEM_ARCHITECTURE.md
 - System diagrams
 - Step-by-step flows
 - Complete node explanations
@@ -211,14 +211,14 @@ Function-level navigation and dependency tracking.
 - Configuration reference
 - Best for: Understanding the big picture
 
-### DEVELOPER_GUIDE.md
+### DEVELOPMENT_GUIDE.md
 - Task-focused sections
 - Copy-paste code examples
 - Bash commands
 - Checklists and matrices
 - Best for: Day-to-day development
 
-### FUNCTION_MAP.md
+### CODEBASE_REFERENCE.md
 - Dependency trees
 - Function signatures
 - File locations
@@ -294,38 +294,38 @@ Function-level navigation and dependency tracking.
 ## 📞 Document Maintenance
 
 When code changes:
-1. **New Node Added?** → Update [FUNCTION_MAP.md](FUNCTION_MAP.md) Core Pipeline Nodes
-2. **Changed Flow?** → Update [CODE_FLOW.md](CODE_FLOW.md) Pipeline Nodes section
-3. **New Feature?** → Add to [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) File Map by Task
-4. **Changed Config?** → Update [CODE_FLOW.md](CODE_FLOW.md) Configuration section
+1. **New Node Added?** → Update [CODEBASE_REFERENCE.md](CODEBASE_REFERENCE.md) Core Pipeline Nodes
+2. **Changed Flow?** → Update [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) Pipeline Nodes section
+3. **New Feature?** → Add to [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) File Map by Task
+4. **Changed Config?** → Update [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) Configuration section
 
 ---
 
 ## 🎓 Learning Path
 
 **Day 1: Fundamentals**
-- Read: CODE_FLOW.md - System Architecture Overview
-- Read: CODE_FLOW.md - Main Request Flow
-- Read: CODE_FLOW.md - Pipeline Nodes (skim)
+- Read: SYSTEM_ARCHITECTURE.md - System Architecture Overview
+- Read: SYSTEM_ARCHITECTURE.md - Main Request Flow
+- Read: SYSTEM_ARCHITECTURE.md - Pipeline Nodes (skim)
 
 **Day 2: Deep Dive**
-- Read: CODE_FLOW.md - All remaining sections
-- Reference: FUNCTION_MAP.md as needed
+- Read: SYSTEM_ARCHITECTURE.md - All remaining sections
+- Reference: CODEBASE_REFERENCE.md as needed
 
 **Day 3: Practical**
-- Bookmark: DEVELOPER_GUIDE.md
-- Reference: FUNCTION_MAP.md for code navigation
+- Bookmark: DEVELOPMENT_GUIDE.md
+- Reference: CODEBASE_REFERENCE.md for code navigation
 - Run: Tests to see system in action
 
 **Ongoing**
-- Use DEVELOPER_GUIDE.md for daily tasks
-- Reference FUNCTION_MAP.md when navigating code
-- Return to CODE_FLOW.md for architecture questions
+- Use DEVELOPMENT_GUIDE.md for daily tasks
+- Reference CODEBASE_REFERENCE.md when navigating code
+- Return to SYSTEM_ARCHITECTURE.md for architecture questions
 
 ---
 
-**Created:** January 29, 2026  
-**Total Documentation:** 1,425 lines across 3 files  
-**Format:** Markdown (GitHub-compatible)  
+**Created:** January 29, 2026
+**Total Documentation:** 1,425 lines across 3 files
+**Format:** Markdown (GitHub-compatible)
 **Scope:** Complete system documentation for developers
 

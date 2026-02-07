@@ -5,6 +5,8 @@
 ### HTTP API (`src/api/main.py`)
 ```
 POST /chat/search
+├── get_current_user() → JWT validation
+├── get_tenant_context() → Tenant isolation
 ├── session_manager.get_or_create_session(session_id)
 │   └── SessionManager (src/session/manager.py)
 ├── pipeline.ainvoke(state)
@@ -16,25 +18,28 @@ POST /chat/search
 
 ## Core Pipeline Nodes (`src/langgraph/nodes.py`)
 
-### 1. context_resolver_node (line 120)
+### 1. context_resolver_node (around line 200)
 ```
 Inputs: session_id, explicit_filters
 ├── session_manager.get_session(session_id)
 ├── search_by_ids(doc_ids) → BM25Searcher
+├── get_tenant_context() → Tenant isolation
 └── merge filters
 Output: filters, candidate_doc_ids, merged_results
 ```
 
-### 2. intent_detector_node (line 163)
+### 2. intent_detector_node (around line 250)
 ```
 Inputs: user_input, conversation_history
 ├── _get_llm() → OpenAI
 ├── LLM inference → intent classification
-└── detect_followup_patterns() → rule-based
-Output: intent, is_follow_up, follow_up_type, confidence
+├── detect_followup_patterns() → rule-based
+├── validate_tenant_access() → Tenant isolation
+└── extract_entities() → Entity extraction
+Output: intent, is_follow_up, follow_up_type, confidence, entities
 ```
 
-### 3. query_rewriter_node (line 270)
+### 3. query_rewriter_node (around line 350)
 ```
 Inputs: user_input, merged_results
 ├── _get_llm() → entity extraction
@@ -45,14 +50,17 @@ Inputs: user_input, merged_results
 ├── extract_location_entities()
 ├── detect_scope_same_restaurant()
 ├── detect_scope_other_restaurants()
-└── apply_scope_filters()
+├── apply_scope_filters()
+├── validate_tenant_restaurant_access() → Tenant isolation
+└── enrich_with_context()
 Output: filters (populated), resolved_query, expanded_query
 ```
 
-### 4. bm25_search_node (line 400)
+### 4. bm25_search_node (around line 500)
 ```
 Inputs: user_input, filters
 ├── _get_bm25_searcher() → BM25Searcher
+├── validate_tenant_access(filters.restaurant_id) → Tenant isolation
 └── searcher.search(query, filters, top_k=100)
     └── BM25Searcher.search() (src/search/bm25.py:search)
         ├── Build OpenSearch query with filters
@@ -60,6 +68,7 @@ Inputs: user_input, filters
         │   ├── price_max filter (range)
         │   ├── serves_min filter (range)
         │   ├── dietary_labels filter (array)
+        │   └── tenant_id filter (for isolation)
         │   ├── exclude_restaurant_id filter (NOT term)
         │   └── location filter (geo)
         └── Execute search → results with scores
