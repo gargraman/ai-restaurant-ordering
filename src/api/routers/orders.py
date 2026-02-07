@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, or_
 
 from src.auth import CurrentUserDep, TenantIdDep, get_current_user_or_guest
 from src.auth.models import CurrentUser
@@ -513,6 +514,40 @@ async def get_order(
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
+    return _build_order_response(order)
+
+
+@router.get("/lookup/{order_number}", response_model=OrderResponse)
+async def get_order_by_number(
+    order_number: str,
+    customer_email: str = Query(..., description="Customer email for verification"),
+    db: AsyncSession = Depends(get_db),
+    cart_manager: CartManager = Depends(get_cart_manager),
+) -> OrderResponse:
+    """Get order by order number with customer verification.
+
+    This endpoint allows customers to look up their order using the order number
+    and their email address for verification.
+    """
+    # Find the order by number and customer email
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.payment_intent),
+            selectinload(Order.restaurant),
+        )
+        .where(
+            Order.order_number == order_number,
+            Order.customer_email == customer_email
+        )
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    # Build response manually since we didn't use the service method
     return _build_order_response(order)
 
 

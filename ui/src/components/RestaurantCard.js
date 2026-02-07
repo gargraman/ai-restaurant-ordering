@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { StarIcon, ThumbsUpIcon, ThumbsDownIcon, CheckCircleIcon } from 'lucide-react';
+import { StarIcon, ThumbsUpIcon, ThumbsDownIcon, CheckCircleIcon, ShoppingCart } from 'lucide-react';
 import { submitFeedback } from '@/lib/api-client';
 import analyticsTracker from '@/lib/analytics/tracker';
+import { useCart } from '@/contexts/CartContext';
 
 const RestaurantCard = ({ restaurant, sessionId }) => {
   const {
@@ -24,12 +25,31 @@ const RestaurantCard = ({ restaurant, sessionId }) => {
   const [feedbackStatus, setFeedbackStatus] = useState(null); // null | 'submitting' | 'submitted' | 'error'
   const [feedbackType, setFeedbackType] = useState(null); // 'positive' | 'negative'
 
+  const { addItem } = useCart();
+
   const handleViewMenuClick = () => {
     // Track the click event
     analyticsTracker.trackResultClicked(doc_id, restaurant_name, sessionId);
 
     // In a real app, this would navigate to the menu page
     console.log(`Navigating to menu for ${restaurant_name}`);
+  };
+
+  const handleAddToCart = () => {
+    // Add item to cart
+    const cartItem = {
+      menu_item_id: doc_id,
+      name: item_name,
+      restaurant_name: restaurant_name,
+      price: display_price || price_per_person || 0,
+      restaurant_id: restaurant.restaurant_id || '', // Using a fallback if not provided
+      quantity: 1
+    };
+
+    addItem(cartItem);
+
+    // Track the add to cart event
+    analyticsTracker.trackAddToCart(doc_id, item_name, restaurant_name, display_price || price_per_person || 0, sessionId);
   };
 
   const handleFeedback = async (rating) => {
@@ -141,13 +161,23 @@ const RestaurantCard = ({ restaurant, sessionId }) => {
           )}
         </div>
 
-        <button
-          className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors self-start sm:self-auto focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-          aria-label={`View menu for ${restaurant_name}`}
-          onClick={handleViewMenuClick}
-        >
-          View Menu
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors self-start sm:self-auto focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+            aria-label={`View menu for ${restaurant_name}`}
+            onClick={handleViewMenuClick}
+          >
+            View Menu
+          </button>
+
+          <button
+            className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium p-1.5 rounded-lg transition-colors self-start sm:self-auto focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            aria-label={`Add ${item_name} to cart`}
+            onClick={handleAddToCart}
+          >
+            <ShoppingCart className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1" aria-label="Dietary labels and tags">
