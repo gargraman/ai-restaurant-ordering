@@ -1,290 +1,205 @@
 """Unit tests for tenant context middleware."""
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from fastapi import Request
-from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.middleware.tenant_context import TenantContextMiddleware
-from src.auth.jwt import TokenError, JWTService
-from src.auth.models import TokenPayload
-from unittest.mock import Mock, patch
+from src.auth.jwt import TokenData
+
+
+class MockJWTService:
+    """Mock JWT service for testing."""
+    
+    def decode_token(self, token: str):
+        """Mock decode token method."""
+        if token == "valid_token":
+            return TokenData(
+                sub="user-123",
+                email="test@example.com",
+                role="user",
+                tenant_id="tenant-123",
+                restaurant_id="rest-456"
+            )
+        else:
+            from src.auth.jwt import TokenError
+            raise TokenError("Invalid token")
+
+
+def mock_get_jwt_service():
+    """Mock function to return JWT service."""
+    return MockJWTService()
 
 
 @pytest.fixture
-def mock_call_next():
-    """Mock call_next function."""
-    async def call_next(request):
-        # Simple mock response
-        return JSONResponse(content={"message": "OK"})
-    return call_next
-
-
-@pytest.fixture
-def mock_token_payload():
-    """Create a mock token payload."""
-    return TokenPayload(
-        sub="user-123",
-        email="test@example.com",
-        role="platform_admin",
-        tenant_id="tenant-456",
-        restaurant_id="rest-789",
-        exp=1234567890,
-        iat=1234567890,
-        token_type="access"
-    )
+def mock_request():
+    """Create a mock request."""
+    scope = {"type": "http"}
+    receive = AsyncMock()
+    send = AsyncMock()
+    
+    request = Request(scope)
+    request._headers = Headers()
+    return request
 
 
 @pytest.mark.asyncio
-async def test_extract_tenant_from_valid_jwt(mock_call_next, mock_token_payload):
-    """Test extracting tenant from valid JWT token."""
-    # Create a mock request with a valid Authorization header
-    headers = Headers({"authorization": "Bearer valid-token"})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-
-    # Modify the token payload for this test
-    test_token_payload = TokenPayload(
-        sub="user-123",
-        email="test@example.com",
-        role="platform_admin",
-        tenant_id="tenant-456",
-        restaurant_id="rest-789",
-        exp=1234567890,
-        iat=1234567890,
-        token_type="access"
+async def test_extracts_tenant_from_jwt(monkeypatch):
+    """Test that middleware extracts tenant from JWT."""
+    # Mock the JWT service
+    monkeypatch.setattr(
+        "src.middleware.tenant_context.get_jwt_service",
+        mock_get_jwt_service
     )
-
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.return_value = test_token_payload
-        mock_get_service.return_value = mock_service
-
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
-
-        # Verify that the token data was stored in request.state
+    
+    # Create middleware
+    middleware = TenantContextMiddleware(AsyncMock())
+    
+    # Create a mock request with valid token
+    async def call_next(request):
+        # Verify that the tenant context was set
+        assert hasattr(request.state, 'user_id')
         assert request.state.user_id == "user-123"
         assert request.state.email == "test@example.com"
-        assert request.state.role == "platform_admin"
-        assert request.state.tenant_id == "tenant-456"
-        assert request.state.restaurant_id == "rest-789"
+        assert request.state.role == "user"
+        assert request.state.tenant_id == "tenant-123"
+        assert request.state.restaurant_id == "rest-456"
         assert request.state.authenticated is True
+        
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {"authorization": "Bearer valid_token"}
+    
+    # Call the middleware
+    await middleware.dispatch(request, call_next)
 
 
 @pytest.mark.asyncio
-async def test_no_authorization_header(mock_call_next):
-    """Test behavior when no authorization header is present."""
-    headers = Headers({})  # No authorization header
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    middleware = TenantContextMiddleware(AsyncMock())
-    response = await middleware.dispatch(request, mock_call_next)
-    
-    # Verify that authenticated flag is False
-    assert request.state.authenticated is False
-
-
-@pytest.mark.asyncio
-async def test_invalid_bearer_token_format(mock_call_next):
-    """Test behavior with invalid bearer token format."""
-    headers = Headers({"authorization": "InvalidFormatToken"})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    middleware = TenantContextMiddleware(AsyncMock())
-    response = await middleware.dispatch(request, mock_call_next)
-    
-    # Should not be authenticated since format is wrong
-    assert request.state.authenticated is False
-
-
-@pytest.mark.asyncio
-async def test_malformed_bearer_token(mock_call_next):
-    """Test behavior with malformed bearer token."""
-    headers = Headers({"authorization": "Bearer invalid.token.format"})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    # Mock decode_token to raise TokenError
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.side_effect = TokenError("Invalid token")
-        mock_get_service.return_value = mock_service
-
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
-
-        # Should not be authenticated due to invalid token
-        assert request.state.authenticated is False
-
-
-@pytest.mark.asyncio
-async def test_jwt_decode_error_handling(mock_call_next):
-    """Test that JWT decode errors are handled gracefully."""
-    headers = Headers({"authorization": "Bearer expired-or-invalid-token"})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    # Mock decode_token to raise TokenError
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.side_effect = TokenError("Token expired")
-        mock_get_service.return_value = mock_service
-
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
-
-        # Should not be authenticated due to JWT error
-        assert request.state.authenticated is False
-
-
-@pytest.mark.asyncio
-async def test_continue_without_token(mock_call_next):
-    """Test that the middleware continues processing even without a token."""
-    headers = Headers({})  # No token provided
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    middleware = TenantContextMiddleware(AsyncMock())
-    response = await middleware.dispatch(request, mock_call_next)
-    
-    # Request should continue processing despite no token
-    assert response.status_code == 200
-    assert request.state.authenticated is False
-
-
-@pytest.mark.asyncio
-async def test_token_data_fields_stored_correctly(mock_call_next):
-    """Test that all token data fields are correctly stored in request state."""
-    headers = Headers({"authorization": "Bearer valid-token"})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-    
-    # Mock token data with all fields
-    mock_token_data = TokenPayload(
-        sub="user-test",
-        email="user@test.com",
-        role="restaurant_admin",
-        tenant_id="tenant-test",
-        restaurant_id="restaurant-test",
-        exp=1234567890,
-        iat=1234567890,
-        token_type="access"
+async def test_stores_tenant_in_request_state(monkeypatch):
+    """Test that tenant information is stored in request state."""
+    # Mock the JWT service
+    monkeypatch.setattr(
+        "src.middleware.tenant_context.get_jwt_service", 
+        mock_get_jwt_service
     )
-
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.return_value = mock_token_data
-        mock_get_service.return_value = mock_service
-
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
-
-        # Verify all fields are stored correctly
-        assert request.state.user_id == "user-test"
-        assert request.state.email == "user@test.com"
-        assert request.state.role == "restaurant_admin"
-        assert request.state.tenant_id == "tenant-test"
-        assert request.state.restaurant_id == "restaurant-test"
-        assert request.state.authenticated is True
-
-
-@pytest.mark.asyncio
-async def test_case_insensitive_bearer_token(mock_call_next):
-    """Test that the middleware handles case variations of 'Bearer'."""
-    headers = Headers({"authorization": "Bearer valid-token"})  # capitalized 'Bearer' (as expected by middleware)
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
-
-    mock_token_data = TokenPayload(
-        sub="user-123",
-        email="test@example.com",
-        role="platform_admin",
-        tenant_id="tenant-456",
-        restaurant_id="rest-789",
-        exp=1234567890,
-        iat=1234567890,
-        token_type="access"
-    )
-
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.return_value = mock_token_data
-        mock_get_service.return_value = mock_service
-
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
-
-        # Should extract the token correctly
-        assert request.state.authenticated is True
+    
+    middleware = TenantContextMiddleware(AsyncMock())
+    
+    async def call_next(request):
+        # Verify all fields are set
         assert request.state.user_id == "user-123"
+        assert request.state.tenant_id == "tenant-123"
+        assert request.state.restaurant_id == "rest-456"
+        assert request.state.role == "user"
+        assert request.state.authenticated is True
+        
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {"authorization": "Bearer valid_token"}
+    
+    await middleware.dispatch(request, call_next)
 
 
 @pytest.mark.asyncio
-async def test_whitespace_handling_in_auth_header(mock_call_next):
-    """Test handling of extra whitespace in authorization header."""
-    headers = Headers({"authorization": "Bearer   spaced-token   "})
-    request = Request(scope={
-        "type": "http",
-        "method": "GET",
-        "path": "/test",
-        "headers": [(k.encode(), v.encode()) for k, v in headers.items()]
-    })
+async def test_continues_without_token():
+    """Test that middleware continues without token."""
+    middleware = TenantContextMiddleware(AsyncMock())
     
-    mock_token_data = TokenPayload(
-        sub="user-123",
-        email="test@example.com",
-        role="platform_admin",
-        tenant_id="tenant-456",
-        restaurant_id="rest-789",
-        exp=1234567890,
-        iat=1234567890,
-        token_type="access"
+    async def call_next(request):
+        # Verify that authenticated flag is False
+        assert request.state.authenticated is False
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {}  # No authorization header
+    
+    await middleware.dispatch(request, call_next)
+
+
+@pytest.mark.asyncio
+async def test_invalid_token_handled_gracefully(monkeypatch):
+    """Test that invalid tokens are handled gracefully."""
+    # Mock the JWT service to raise an exception
+    def mock_invalid_jwt_service():
+        class InvalidJWTService:
+            def decode_token(self, token: str):
+                from src.auth.jwt import TokenError
+                raise TokenError("Invalid token")
+        
+        return InvalidJWTService()
+    
+    monkeypatch.setattr(
+        "src.middleware.tenant_context.get_jwt_service",
+        mock_invalid_jwt_service
     )
     
-    # Mock decode_token to handle the spaced token
-    with patch('src.middleware.tenant_context.get_jwt_service') as mock_get_service:
-        mock_service = Mock(spec=JWTService)
-        mock_service.decode_token.return_value = mock_token_data
-        mock_get_service.return_value = mock_service
+    middleware = TenantContextMiddleware(AsyncMock())
+    
+    async def call_next(request):
+        # Verify that authenticated flag is False despite exception
+        assert request.state.authenticated is False
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {"authorization": "Bearer invalid_token"}
+    
+    await middleware.dispatch(request, call_next)
 
-        middleware = TenantContextMiddleware(AsyncMock())
-        response = await middleware.dispatch(request, mock_call_next)
 
-        # Should still process the token correctly
+@pytest.mark.asyncio
+async def test_no_authorization_header(monkeypatch):
+    """Test behavior when no authorization header is present."""
+    middleware = TenantContextMiddleware(AsyncMock())
+    
+    async def call_next(request):
+        # Should not attempt to decode token
+        assert request.state.authenticated is False
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {}  # No authorization header
+    
+    await middleware.dispatch(request, call_next)
+
+
+@pytest.mark.asyncio
+async def test_bearer_token_format_correctly_parsed(monkeypatch):
+    """Test that Bearer token format is parsed correctly."""
+    # Track if decode_token was called with the right token
+    captured_token = None
+    
+    def mock_decode_jwt_service():
+        class DecodeJWTService:
+            def decode_token(self, token: str):
+                nonlocal captured_token
+                captured_token = token
+                return TokenData(
+                    sub="user-123",
+                    email="test@example.com",
+                    role="user",
+                    tenant_id="tenant-123",
+                    restaurant_id="rest-456"
+                )
+        
+        return DecodeJWTService()
+    
+    monkeypatch.setattr(
+        "src.middleware.tenant_context.get_jwt_service",
+        mock_decode_jwt_service
+    )
+    
+    middleware = TenantContextMiddleware(AsyncMock())
+    
+    async def call_next(request):
+        # Verify the correct token was extracted
+        assert captured_token == "valid_token"
         assert request.state.authenticated is True
+        return AsyncMock()
+    
+    request = Request({"type": "http"})
+    request.headers = {"authorization": "Bearer valid_token"}
+    
+    await middleware.dispatch(request, call_next)

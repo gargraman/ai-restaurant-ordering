@@ -1,5 +1,6 @@
 """Embedding generation for vector search."""
 
+import hashlib
 import time
 from typing import Sequence
 
@@ -15,11 +16,15 @@ from tenacity import (
 from src.config import get_settings
 from src.models.index import IndexDocument
 from src.metrics import record_llm_call
+from src.utils.circuit_breaker import get_openai_circuit_breaker
 
 logger = structlog.get_logger()
 
 # OpenAI embedding API limits
 MAX_BATCH_SIZE = 2048  # OpenAI's maximum inputs per request
+
+# Global cache for embeddings
+_embedding_cache = {}
 
 
 class EmbeddingGenerator:
@@ -52,13 +57,29 @@ class EmbeddingGenerator:
     )
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate embedding for a single text."""
+        # Create cache key
+        cache_key = hashlib.sha256(f"{self.model}:{text}".encode()).hexdigest()
+        
+        # Check cache first
+        if cache_key in _embedding_cache:
+            logger.debug("embedding_cache_hit", text=text[:50])
+            return _embedding_cache[cache_key]
+            
         start_time = time.time()
-        try:
+        
+        # Use circuit breaker for the API call
+        circuit_breaker = get_openai_circuit_breaker()
+        
+        async def _make_api_call():
             response = await self.client.embeddings.create(
                 model=self.model,
                 input=text,
                 dimensions=self.dimensions,
             )
+            return response
+
+        try:
+            response = await circuit_breaker.call(_make_api_call)
             duration = time.time() - start_time
 
             # Extract token usage if available
@@ -73,7 +94,12 @@ class EmbeddingGenerator:
                 input_tokens=input_tokens
             )
 
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            
+            # Cache the result
+            _embedding_cache[cache_key] = embedding
+            
+            return embedding
         except Exception as e:
             duration = time.time() - start_time
             record_llm_call(
@@ -108,38 +134,72 @@ class EmbeddingGenerator:
                 f"Batch size {len(texts)} exceeds OpenAI limit of {MAX_BATCH_SIZE}"
             )
 
-        start_time = time.time()
-        try:
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=texts,
-                dimensions=self.dimensions,
-            )
-            duration = time.time() - start_time
+        # Check cache for each text and identify which ones need to be generated
+        results = []
+        uncached_texts = []
+        uncached_indices = []
+        
+        for i, text in enumerate(texts):
+            cache_key = hashlib.sha256(f"{self.model}:{text}".encode()).hexdigest()
+            if cache_key in _embedding_cache:
+                results.append(_embedding_cache[cache_key])
+                logger.debug("embedding_batch_cache_hit", text=text[:50])
+            else:
+                results.append(None)  # Placeholder
+                uncached_texts.append(text)
+                uncached_indices.append(i)
 
-            # Extract token usage if available
-            usage = getattr(response, 'usage', None)
-            input_tokens = usage.prompt_tokens if usage else 0
+        # Generate embeddings for uncached texts
+        if uncached_texts:
+            start_time = time.time()
+            
+            # Use circuit breaker for the API call
+            circuit_breaker = get_openai_circuit_breaker()
+            
+            async def _make_batch_api_call():
+                response = await self.client.embeddings.create(
+                    model=self.model,
+                    input=uncached_texts,
+                    dimensions=self.dimensions,
+                )
+                return response
 
-            # Record LLM metrics
-            record_llm_call(
-                model=self.model,
-                operation='embedding_batch_generation',
-                duration=duration,
-                input_tokens=input_tokens
-            )
+            try:
+                response = await circuit_breaker.call(_make_batch_api_call)
+                duration = time.time() - start_time
 
-            # Sort by index to maintain order
-            sorted_data = sorted(response.data, key=lambda x: x.index)
-            return [item.embedding for item in sorted_data]
-        except Exception as e:
-            duration = time.time() - start_time
-            record_llm_call(
-                model=self.model,
-                operation='embedding_batch_generation',
-                duration=duration
-            )
-            raise
+                # Extract token usage if available
+                usage = getattr(response, 'usage', None)
+                input_tokens = usage.prompt_tokens if usage else 0
+
+                # Record LLM metrics
+                record_llm_call(
+                    model=self.model,
+                    operation='embedding_batch_generation',
+                    duration=duration,
+                    input_tokens=input_tokens
+                )
+
+                # Sort by index to maintain order
+                sorted_data = sorted(response.data, key=lambda x: x.index)
+                uncached_embeddings = [item.embedding for item in sorted_data]
+
+                # Update cache and fill in results
+                for idx, embedding in zip(uncached_indices, uncached_embeddings):
+                    cache_key = hashlib.sha256(f"{self.model}:{texts[idx]}".encode()).hexdigest()
+                    _embedding_cache[cache_key] = embedding
+                    results[idx] = embedding
+
+            except Exception as e:
+                duration = time.time() - start_time
+                record_llm_call(
+                    model=self.model,
+                    operation='embedding_batch_generation',
+                    duration=duration
+                )
+                raise
+
+        return results
 
     async def generate_document_embeddings(
         self,

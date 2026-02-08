@@ -270,3 +270,113 @@ export const getOrderDetails = async (orderNumber, customerEmail) => {
 
   return response.json();
 };
+
+/**
+ * Create a new restaurant (admin endpoint)
+ * @param {Object} restaurantData - Restaurant information
+ * @returns {Promise<Object>} Created restaurant
+ */
+export const createRestaurant = async (restaurantData) => {
+  const response = await fetch(`${API_BASE_URL}/admin/restaurants`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(restaurantData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Connect Stripe account to restaurant
+ * @param {string} restaurantId - Restaurant ID
+ * @param {string} code - Stripe authorization code
+ * @returns {Promise<Object>} Connection status
+ */
+export const connectStripe = async (restaurantId, code) => {
+  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/stripe/connect`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ code })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Get Stripe connection status
+ * @param {string} restaurantId - Restaurant ID
+ * @returns {Promise<Object>} Stripe status
+ */
+export const getStripeStatus = async (restaurantId) => {
+  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/stripe/status`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Connect POS system to restaurant
+ * @param {string} restaurantId - Restaurant ID
+ * @param {Object} posData - POS configuration
+ * @returns {Promise<Object>} Connection status
+ */
+export const connectPos = async (restaurantId, posData) => {
+  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/pos/connect`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(posData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Get POS connection status
+ * @param {string} restaurantId - Restaurant ID
+ * @returns {Promise<Object>} POS status
+ */
+export const getPosStatus = async (restaurantId) => {
+  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/pos/status`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};

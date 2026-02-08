@@ -12,6 +12,7 @@ from src.langgraph.nodes import (
     query_rewriter_node,
     bm25_search_node,
     vector_search_node,
+    parallel_search_node,
     rrf_merge_node,
     context_selector_node,
     rag_generator_node,
@@ -118,8 +119,7 @@ def create_search_graph() -> StateGraph:
     graph.add_node("context_resolver_node", context_resolver_node)
     graph.add_node("intent_detector_node", intent_detector_node)
     graph.add_node("query_rewriter_node", query_rewriter_node)
-    graph.add_node("bm25_search_node", bm25_search_node)
-    graph.add_node("vector_search_node", vector_search_node)
+    graph.add_node("parallel_search_node", parallel_search_node)
     graph.add_node("rrf_merge_node", rrf_merge_node)
     graph.add_node("context_selector_node", context_selector_node)
     graph.add_node("rag_generator_node", rag_generator_node)
@@ -172,14 +172,11 @@ def create_search_graph() -> StateGraph:
     )
 
     # Query rewriter to parallel search
-    # Note: In LangGraph, parallel execution requires special handling
-    # For simplicity, we run searches sequentially here
-    graph.add_edge("query_rewriter_node", "bm25_search_node")
-    graph.add_edge("bm25_search_node", "vector_search_node")
+    graph.add_edge("query_rewriter_node", "parallel_search_node")
 
     # Conditional routing to 2-way or 3-way RRF based on graph results
     graph.add_conditional_edges(
-        "vector_search_node",
+        "parallel_search_node",
         route_to_merge_node,
         {
             "rrf_merge_node": "rrf_merge_node",

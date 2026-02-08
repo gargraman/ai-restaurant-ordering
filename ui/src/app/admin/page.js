@@ -31,8 +31,8 @@ export default function AdminDashboard() {
   });
   const [stripeForm, setStripeForm] = useState({
     email: '',
-    refresh_url: `${window.location.origin}/admin/restaurants`,
-    return_url: `${window.location.origin}/admin/restaurants`
+    refresh_url: typeof window !== 'undefined' ? `${window.location.origin}/admin/restaurants` : '/admin/restaurants',
+    return_url: typeof window !== 'undefined' ? `${window.location.origin}/admin/restaurants` : '/admin/restaurants'
   });
   const [posForm, setPosForm] = useState({
     provider: 'square',

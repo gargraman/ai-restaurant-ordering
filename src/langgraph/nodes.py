@@ -24,7 +24,9 @@ from src.models.state import GraphState, SearchFilters
 from src.search.bm25 import BM25Searcher
 from src.search.vector import VectorSearcher
 from src.search.graph import GraphSearcher
+from src.search.rrf_utils import rrf_merge_2way, rrf_merge_3way
 from src.metrics import record_llm_call, record_search_request
+from src.utils.circuit_breaker import get_openai_circuit_breaker, CircuitBreakerOpenException
 
 
 class IntentDetectionResult(BaseModel):
@@ -130,13 +132,20 @@ def get_session_manager():
     return _session_manager
 
 
+# Global cache for LLM instances
+_llm_instance = None
+
+
 def _get_llm() -> ChatOpenAI:
-    """Get LLM instance."""
-    return ChatOpenAI(
-        model=settings.openai_model,
-        api_key=settings.openai_api_key,
-        temperature=0,
-    )
+    """Get cached LLM instance."""
+    global _llm_instance
+    if _llm_instance is None:
+        _llm_instance = ChatOpenAI(
+            model=settings.openai_model,
+            api_key=settings.openai_api_key,
+            temperature=0,
+        )
+    return _llm_instance
 
 
 def _get_bm25_searcher() -> BM25Searcher:
@@ -244,8 +253,15 @@ async def intent_detector_node(state: GraphState) -> GraphState:
     )
 
     start_time = time.time()
+    
+    # Use circuit breaker for the LLM call
+    circuit_breaker = get_openai_circuit_breaker()
+    
+    async def _make_llm_call():
+        return await llm.ainvoke(prompt)
+
     try:
-        response = await llm.ainvoke(prompt)
+        response = await circuit_breaker.call(_make_llm_call)
         duration = time.time() - start_time
 
         # Extract token usage if available
@@ -277,6 +293,19 @@ async def intent_detector_node(state: GraphState) -> GraphState:
             follow_up_type=state["follow_up_type"],
             duration=duration
         )
+
+    except CircuitBreakerOpenException as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='intent_detection',
+            duration=duration
+        )
+        logger.warning("intent_detection_circuit_breaker_open", error=str(e))
+        state["intent"] = "search"
+        state["is_follow_up"] = False
+        state["follow_up_type"] = None
+        state["confidence"] = 0.5
 
     except (json.JSONDecodeError, ValidationError) as e:
         duration = time.time() - start_time
@@ -351,8 +380,15 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     )
 
     start_time = time.time()
+    
+    # Use circuit breaker for the LLM call
+    circuit_breaker = get_openai_circuit_breaker()
+    
+    async def _make_entity_extraction_call():
+        return await llm.ainvoke(entity_prompt)
+
     try:
-        response = await llm.ainvoke(entity_prompt)
+        response = await circuit_breaker.call(_make_entity_extraction_call)
         duration = time.time() - start_time
 
         # Extract token usage if available
@@ -415,6 +451,16 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
 
         logger.info("entities_extracted", filters=filters)
 
+    except CircuitBreakerOpenException as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='entity_extraction',
+            duration=duration
+        )
+        logger.warning("entity_extraction_circuit_breaker_open", error=str(e))
+        # Set default values when circuit breaker is open
+        state["filters"] = current_filters
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
@@ -431,8 +477,15 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     )
 
     start_time = time.time()
+    
+    # Use circuit breaker for the LLM call
+    circuit_breaker = get_openai_circuit_breaker()
+    
+    async def _make_query_expansion_call():
+        return await llm.ainvoke(expansion_prompt)
+
     try:
-        response = await llm.ainvoke(expansion_prompt)
+        response = await circuit_breaker.call(_make_query_expansion_call)
         duration = time.time() - start_time
 
         # Extract token usage if available
@@ -454,6 +507,17 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
 
         logger.info("query_expanded", expanded_query=state["expanded_query"])
 
+    except CircuitBreakerOpenException as e:
+        duration = time.time() - start_time
+        record_llm_call(
+            model=settings.openai_model,
+            operation='query_expansion',
+            duration=duration
+        )
+        logger.warning("query_expansion_circuit_breaker_open", error=str(e))
+        # Use original input when circuit breaker is open
+        state["expanded_query"] = state["user_input"]
+        state["resolved_query"] = state["user_input"]
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
@@ -540,11 +604,59 @@ async def vector_search_node(state: GraphState) -> GraphState:
     return state
 
 
-async def rrf_merge_node(state: GraphState) -> GraphState:
-    """Merge BM25 and vector results using Reciprocal Rank Fusion.
+async def parallel_search_node(state: GraphState) -> GraphState:
+    """Execute BM25 and vector searches in parallel."""
+    query = state.get("expanded_query", "")
+    filters = state.get("filters", {})
 
-    RRF(d) = Σ weight_i / (k + rank_i(d))
-    """
+    logger.info(
+        "parallel_search_node",
+        query=query,
+        filters=filters,
+    )
+
+    if not query:
+        logger.warning("parallel_search_empty_query")
+        state["bm25_results"] = []
+        state["vector_results"] = []
+        return state
+
+    try:
+        # Run both searches in parallel
+        bm25_task = asyncio.create_task(
+            asyncio.to_thread(
+                _get_bm25_searcher().search,
+                query,
+                filters,
+                settings.bm25_top_k,
+            )
+        )
+        vector_task = asyncio.create_task(
+            (await _get_vector_searcher()).search(query, filters, settings.vector_top_k)
+        )
+
+        bm25_results, vector_results = await asyncio.gather(bm25_task, vector_task)
+
+        state["bm25_results"] = bm25_results
+        state["vector_results"] = vector_results
+
+        logger.info(
+            "parallel_search_complete",
+            bm25_count=len(bm25_results),
+            vector_count=len(vector_results),
+        )
+
+    except Exception as e:
+        logger.error("parallel_search_error", error=str(e))
+        state["bm25_results"] = []
+        state["vector_results"] = []
+        state["error"] = f"Parallel search failed: {str(e)}"
+
+    return state
+
+
+async def rrf_merge_node(state: GraphState) -> GraphState:
+    """Merge BM25 and vector results using Reciprocal Rank Fusion."""
     logger.info(
         "rrf_merge_node",
         bm25_count=len(state.get("bm25_results", [])),
@@ -558,32 +670,13 @@ async def rrf_merge_node(state: GraphState) -> GraphState:
     bm25_weight = settings.bm25_weight
     vector_weight = settings.vector_weight
 
-    scores: dict[str, float] = defaultdict(float)
-    doc_map: dict[str, dict] = {}
-
-    # Score BM25 results
-    for rank, doc in enumerate(bm25_results, start=1):
-        doc_id = doc.get("doc_id")
-        if doc_id:
-            scores[doc_id] += bm25_weight / (k + rank)
-            doc_map[doc_id] = doc
-
-    # Score vector results
-    for rank, doc in enumerate(vector_results, start=1):
-        doc_id = doc.get("doc_id")
-        if doc_id:
-            scores[doc_id] += vector_weight / (k + rank)
-            doc_map[doc_id] = doc
-
-    # Sort by RRF score
-    sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-
-    # Build merged results with RRF scores
-    merged = []
-    for doc_id in sorted_ids:
-        doc = doc_map[doc_id].copy()
-        doc["rrf_score"] = scores[doc_id]
-        merged.append(doc)
+    merged = rrf_merge_2way(
+        bm25_results,
+        vector_results,
+        k=k,
+        bm25_weight=bm25_weight,
+        vector_weight=vector_weight,
+    )
 
     state["merged_results"] = merged
 
@@ -982,49 +1075,15 @@ async def rrf_merge_3way_node(state: GraphState) -> GraphState:
     vector_weight = settings.vector_weight
     graph_weight = settings.graph_weight
 
-    scores: dict[str, float] = defaultdict(float)
-    doc_map: dict[str, dict] = {}
-    sources: dict[str, set] = defaultdict(set)
-
-    # Score BM25 results
-    for rank, doc in enumerate(bm25_results, start=1):
-        doc_id = doc.get("doc_id")
-        if doc_id:
-            scores[doc_id] += bm25_weight / (k + rank)
-            doc_map[doc_id] = doc
-            sources[doc_id].add("bm25")
-
-    # Score vector results
-    for rank, doc in enumerate(vector_results, start=1):
-        doc_id = doc.get("doc_id")
-        if doc_id:
-            scores[doc_id] += vector_weight / (k + rank)
-            if doc_id not in doc_map:
-                doc_map[doc_id] = doc
-            sources[doc_id].add("vector")
-
-    # Score graph results
-    for rank, doc in enumerate(graph_results, start=1):
-        doc_id = doc.get("doc_id")
-        if doc_id:
-            scores[doc_id] += graph_weight / (k + rank)
-            if doc_id not in doc_map:
-                doc_map[doc_id] = doc
-            sources[doc_id].add("graph")
-
-    # Sort by RRF score
-    sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-
-    # Build merged results with source info
-    merged = []
-    for doc_id in sorted_ids:
-        doc = doc_map[doc_id].copy()
-        doc["rrf_score"] = scores[doc_id]
-        doc["sources"] = list(sources[doc_id])
-        doc["in_bm25"] = "bm25" in sources[doc_id]
-        doc["in_vector"] = "vector" in sources[doc_id]
-        doc["in_graph"] = "graph" in sources[doc_id]
-        merged.append(doc)
+    merged = rrf_merge_3way(
+        bm25_results,
+        vector_results,
+        graph_results,
+        k=k,
+        bm25_weight=bm25_weight,
+        vector_weight=vector_weight,
+        graph_weight=graph_weight,
+    )
 
     state["merged_results"] = merged
 

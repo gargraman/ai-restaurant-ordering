@@ -60,6 +60,9 @@ Thumbs.db
 
 # Docker volumes (local data)
 docker/data/
+# UI
+node_modules/
+ui/node_modules/
 
 # Temporary files
 tmp/

@@ -36,7 +36,7 @@ const MessageBubble = ({ role, content, results, timestamp, sessionId }) => {
               <div className="mt-3">
                 <p className="text-gray-600 italic" tabIndex="0" aria-label="No restaurant options found">No specific restaurant options found for this query.</p>
               </div>
-            )
+            )}
           </>
         )}
 
