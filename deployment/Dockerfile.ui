@@ -18,26 +18,37 @@ RUN npm run build
 # Create public directory if it doesn't exist
 RUN mkdir -p public
 
-# Production stage - Using Next.js standalone mode
+# Production stage - Using Next.js standalone mode with nginx
 FROM node:18-alpine
 
 WORKDIR /app
+
+# Install nginx
+RUN apk add --no-cache nginx
 
 # Copy built Next.js app from builder
 COPY --from=builder /app/.next/standalone ./
 # Copy public directory
 COPY --from=builder /app/public ./public
+# Copy Next.js static assets to be served by nginx
+COPY --from=builder /app/.next/static ./.next/static
+
+# Copy nginx configuration
+COPY deployment/nginx.conf /etc/nginx/nginx.conf
+
+# Create directory for nginx logs
+RUN mkdir -p /var/log/nginx
 
 # Expose port
 EXPOSE 3000
 
 # Set environment
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3001  # Next.js server will run on port 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+    CMD curl -f http://localhost:3000/nginx-health || exit 1
 
-# Start the Next.js server
-CMD ["node", "server.js"]
+# Start both nginx and Next.js server
+CMD sh -c "node server.js & nginx -g 'daemon off;'"

@@ -55,6 +55,9 @@ dependencies = [
     # AWS Services
     "boto3>=1.34.0",
 
+    # Graph Database
+    "neo4j>=5.0.0",
+
     # Monitoring
     "prometheus-client>=0.20.0",
     "psutil>=5.9.0",
