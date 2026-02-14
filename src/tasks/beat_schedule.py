@@ -55,10 +55,13 @@ CELERYBEAT_SCHEDULE = {
 
 
 # Import celery app for task registration
-from src.tasks.celery_app import celery_app
+# Note: We delay the import to avoid circular dependency
+def get_celery_app():
+    from src.tasks.celery_app import celery_app
+    return celery_app
 
 
-@celery_app.task(name="src.tasks.beat_schedule.sync_all_catalogs")
+@get_celery_app().task(name="src.tasks.beat_schedule.sync_all_catalogs")
 def sync_all_catalogs() -> dict:
     """Trigger menu catalog sync for all active restaurants.
 
@@ -108,7 +111,7 @@ async def _sync_all_catalogs_async() -> dict:
         return {"status": "success", "restaurants_queued": queued}
 
 
-@celery_app.task(name="src.tasks.beat_schedule.cleanup_stale_orders")
+@get_celery_app().task(name="src.tasks.beat_schedule.cleanup_stale_orders")
 def cleanup_stale_orders() -> dict:
     """Clean up orders stuck in SENT_TO_POS status.
 
@@ -167,7 +170,7 @@ async def _cleanup_stale_orders_async() -> dict:
         return {"status": "success", "stale_orders_found": len(stale_orders)}
 
 
-@celery_app.task(name="src.tasks.beat_schedule.refresh_pos_tokens")
+@get_celery_app().task(name="src.tasks.beat_schedule.refresh_pos_tokens")
 def refresh_pos_tokens() -> dict:
     """Refresh POS OAuth tokens that are close to expiry.
 
@@ -277,7 +280,7 @@ async def _refresh_pos_tokens_async() -> dict:
         }
 
 
-@celery_app.task(name="src.tasks.beat_schedule.generate_dlq_report")
+@get_celery_app().task(name="src.tasks.beat_schedule.generate_dlq_report")
 def generate_dlq_report() -> dict:
     """Generate daily report of DLQ orders.
 
@@ -347,7 +350,7 @@ async def _generate_dlq_report_async() -> dict:
         return {"status": "success", "report": report}
 
 
-@celery_app.task(name="src.tasks.beat_schedule.check_pos_connections")
+@get_celery_app().task(name="src.tasks.beat_schedule.check_pos_connections")
 def check_pos_connections() -> dict:
     """Health check for POS connections.
 

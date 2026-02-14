@@ -1,6 +1,8 @@
 // API client for the restaurant discovery chatbot
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// When NEXT_PUBLIC_API_URL is empty, requests use same-origin (proxied via Next.js rewrites).
+// Set to a full URL (e.g. http://localhost:8000) for direct cross-origin access.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 /**
  * Perform a chat search

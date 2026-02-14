@@ -165,9 +165,15 @@ services:
     build:
       context: ..
       dockerfile: deployment/Dockerfile.ui
+      args:
+        BACKEND_URL: http://api:8000
+        NODE_ENV: production
     container_name: hybrid-search-ui
     ports:
-      - "3000:3000"
+      - "3000:3001"
+    environment:
+      # Ensure backend is accessible from the container
+      BACKEND_URL: http://api:8000
     depends_on:
       - api
     healthcheck:

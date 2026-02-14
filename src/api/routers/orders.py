@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -188,13 +188,17 @@ class OrderListResponse(BaseModel):
 # Cart endpoints
 @router.get("/cart", response_model=CartResponse)
 async def get_cart(
-    user: CurrentUserDep,
-    tenant_id: TenantIdDep,
+    request: Request,
     session_id: str = Query(..., description="Session ID"),
     cart_manager: CartManager = Depends(get_cart_manager),
     db: AsyncSession = Depends(get_db),
 ) -> CartResponse:
     """Get current cart contents."""
+    # Extract tenant_id from request
+    tenant_id = request.query_params.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = "default_tenant"  # Fallback for guest users
+    
     await set_tenant_context(db, tenant_id)
     cart = await cart_manager.get_cart(tenant_id, session_id)
 
@@ -222,27 +226,31 @@ async def get_cart(
 
 @router.post("/cart/items", response_model=CartResponse, status_code=status.HTTP_201_CREATED)
 async def add_to_cart(
-    request: AddToCartRequest,
-    user: CurrentUserDep,
-    tenant_id: TenantIdDep,
+    request_data: AddToCartRequest,
+    request: Request,
     session_id: str = Query(..., description="Session ID"),
     cart_manager: CartManager = Depends(get_cart_manager),
     db: AsyncSession = Depends(get_db),
 ) -> CartResponse:
     """Add item to cart."""
+    # Extract tenant_id from request
+    tenant_id = request.query_params.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = "default_tenant"  # Fallback for guest users
+    
     await set_tenant_context(db, tenant_id)
     try:
         cart = await cart_manager.add_item(
             tenant_id=tenant_id,
             session_id=session_id,
-            menu_item_id=request.menu_item_id,
-            name=request.name,
-            unit_price_cents=request.unit_price_cents,
-            restaurant_id=request.restaurant_id,
-            restaurant_name=request.restaurant_name,
-            quantity=request.quantity,
-            modifiers=request.modifiers,
-            special_instructions=request.special_instructions,
+            menu_item_id=request_data.menu_item_id,
+            name=request_data.name,
+            unit_price_cents=request_data.unit_price_cents,
+            restaurant_id=request_data.restaurant_id,
+            restaurant_name=request_data.restaurant_name,
+            quantity=request_data.quantity,
+            modifiers=request_data.modifiers,
+            special_instructions=request_data.special_instructions,
         )
 
         return CartResponse(
@@ -272,21 +280,25 @@ async def add_to_cart(
 @router.patch("/cart/items/{item_id}", response_model=CartResponse)
 async def update_cart_item(
     item_id: str,
-    request: UpdateCartItemRequest,
-    user: CurrentUserDep,
-    tenant_id: TenantIdDep,
+    request_data: UpdateCartItemRequest,
+    request: Request,
     session_id: str = Query(..., description="Session ID"),
     cart_manager: CartManager = Depends(get_cart_manager),
     db: AsyncSession = Depends(get_db),
 ) -> CartResponse:
     """Update cart item quantity (0 to remove)."""
+    # Extract tenant_id from request
+    tenant_id = request.query_params.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = "default_tenant"  # Fallback for guest users
+    
     await set_tenant_context(db, tenant_id)
     try:
         cart = await cart_manager.update_item_quantity(
             tenant_id=tenant_id,
             session_id=session_id,
             item_id=item_id,
-            quantity=request.quantity,
+            quantity=request_data.quantity,
         )
 
         return CartResponse(
@@ -316,13 +328,17 @@ async def update_cart_item(
 @router.delete("/cart/items/{item_id}", response_model=CartResponse)
 async def remove_cart_item(
     item_id: str,
-    user: CurrentUserDep,
-    tenant_id: TenantIdDep,
+    request: Request,
     session_id: str = Query(..., description="Session ID"),
     cart_manager: CartManager = Depends(get_cart_manager),
     db: AsyncSession = Depends(get_db),
 ) -> CartResponse:
     """Remove item from cart."""
+    # Extract tenant_id from request
+    tenant_id = request.query_params.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = "default_tenant"  # Fallback for guest users
+    
     await set_tenant_context(db, tenant_id)
     try:
         cart = await cart_manager.remove_item(
@@ -357,13 +373,17 @@ async def remove_cart_item(
 
 @router.delete("/cart", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_cart(
-    user: CurrentUserDep,
-    tenant_id: TenantIdDep,
+    request: Request,
     session_id: str = Query(..., description="Session ID"),
     cart_manager: CartManager = Depends(get_cart_manager),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Clear all items from cart."""
+    # Extract tenant_id from request
+    tenant_id = request.query_params.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = "default_tenant"  # Fallback for guest users
+    
     await set_tenant_context(db, tenant_id)
     await cart_manager.clear_cart(tenant_id, session_id)
 

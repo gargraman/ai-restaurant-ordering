@@ -3,17 +3,21 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Accept build arguments for backend URL
+ARG BACKEND_URL=http://api:8000
+ARG NODE_ENV=production
+
 # Copy UI package files first (for better caching)
 COPY ui/package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (including devDependencies for build tools)
+RUN npm install --include=dev
 
 # Copy UI source files (excluding node_modules via .dockerignore)
 COPY ui/ .
 
-# Build the Next.js app
-RUN npm run build
+# Build the Next.js app with backend URL for rewrites
+RUN BACKEND_URL=$BACKEND_URL NODE_ENV=$NODE_ENV npm run build
 
 # Create public directory if it doesn't exist
 RUN mkdir -p public
@@ -44,7 +48,9 @@ EXPOSE 3000
 
 # Set environment
 ENV NODE_ENV=production
-ENV PORT=3001  # Next.js server will run on port 3001
+ENV PORT=3001  
+
+# Next.js server will run on port 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
