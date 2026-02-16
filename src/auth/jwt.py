@@ -15,6 +15,42 @@ from jose import ExpiredSignatureError, JWTError, jwt
 
 from src.auth.models import CurrentUser, TokenPayload, TokenType, UserRole
 
+
+# For backward compatibility with existing code
+TokenData = TokenPayload
+
+
+def create_access_token(
+    user_id: str,
+    email: str,
+    role: UserRole,
+    tenant_id: str,
+    restaurant_id: str | None = None,
+    additional_claims: dict[str, Any] | None = None,
+) -> str:
+    """Create a new access token using the global JWT service.
+    
+    Args:
+        user_id: User UUID
+        email: User email address
+        role: User role
+        tenant_id: Tenant UUID
+        restaurant_id: Restaurant UUID (optional)
+        additional_claims: Additional claims to include
+
+    Returns:
+        Encoded JWT access token string
+    """
+    jwt_service = get_jwt_service()
+    return jwt_service.create_access_token(
+        user_id=user_id,
+        email=email,
+        role=role,
+        tenant_id=tenant_id,
+        restaurant_id=restaurant_id,
+        additional_claims=additional_claims,
+    )
+
 logger = structlog.get_logger()
 
 # JWT Algorithm - HS256 is suitable for symmetric key signing

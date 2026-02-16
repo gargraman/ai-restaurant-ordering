@@ -6,7 +6,7 @@ from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.middleware.tenant_context import TenantContextMiddleware
-from src.auth.jwt import TokenData
+from src.auth.models import TokenPayload, UserRole, TokenType
 
 
 class MockJWTService:
@@ -15,12 +15,15 @@ class MockJWTService:
     def decode_token(self, token: str):
         """Mock decode token method."""
         if token == "valid_token":
-            return TokenData(
+            return TokenPayload(
                 sub="user-123",
                 email="test@example.com",
-                role="user",
+                role=UserRole.CUSTOMER,
                 tenant_id="tenant-123",
-                restaurant_id="rest-456"
+                restaurant_id="rest-456",
+                exp=1234567890,  # Example timestamp
+                iat=1234567890,  # Example timestamp
+                token_type=TokenType.ACCESS
             )
         else:
             from src.auth.jwt import TokenError
@@ -62,15 +65,14 @@ async def test_extracts_tenant_from_jwt(monkeypatch):
         assert hasattr(request.state, 'user_id')
         assert request.state.user_id == "user-123"
         assert request.state.email == "test@example.com"
-        assert request.state.role == "user"
+        assert request.state.role == "customer"
         assert request.state.tenant_id == "tenant-123"
         assert request.state.restaurant_id == "rest-456"
         assert request.state.authenticated is True
         
         return AsyncMock()
     
-    request = Request({"type": "http"})
-    request.headers = {"authorization": "Bearer valid_token"}
+    request = Request({"type": "http", "headers": [(b"authorization", b"Bearer valid_token")]})
     
     # Call the middleware
     await middleware.dispatch(request, call_next)
@@ -92,13 +94,12 @@ async def test_stores_tenant_in_request_state(monkeypatch):
         assert request.state.user_id == "user-123"
         assert request.state.tenant_id == "tenant-123"
         assert request.state.restaurant_id == "rest-456"
-        assert request.state.role == "user"
+        assert request.state.role == "customer"
         assert request.state.authenticated is True
         
         return AsyncMock()
     
-    request = Request({"type": "http"})
-    request.headers = {"authorization": "Bearer valid_token"}
+    request = Request({"type": "http", "headers": [(b"authorization", b"Bearer valid_token")]})
     
     await middleware.dispatch(request, call_next)
 
@@ -107,15 +108,14 @@ async def test_stores_tenant_in_request_state(monkeypatch):
 async def test_continues_without_token():
     """Test that middleware continues without token."""
     middleware = TenantContextMiddleware(AsyncMock())
-    
+
     async def call_next(request):
         # Verify that authenticated flag is False
         assert request.state.authenticated is False
         return AsyncMock()
-    
-    request = Request({"type": "http"})
-    request.headers = {}  # No authorization header
-    
+
+    request = Request({"type": "http", "headers": []})
+
     await middleware.dispatch(request, call_next)
 
 
@@ -143,9 +143,8 @@ async def test_invalid_token_handled_gracefully(monkeypatch):
         assert request.state.authenticated is False
         return AsyncMock()
     
-    request = Request({"type": "http"})
-    request.headers = {"authorization": "Bearer invalid_token"}
-    
+    request = Request({"type": "http", "headers": [(b"authorization", b"Bearer invalid_token")]})
+
     await middleware.dispatch(request, call_next)
 
 
@@ -159,9 +158,8 @@ async def test_no_authorization_header(monkeypatch):
         assert request.state.authenticated is False
         return AsyncMock()
     
-    request = Request({"type": "http"})
-    request.headers = {}  # No authorization header
-    
+    request = Request({"type": "http", "headers": []})
+
     await middleware.dispatch(request, call_next)
 
 
@@ -176,12 +174,15 @@ async def test_bearer_token_format_correctly_parsed(monkeypatch):
             def decode_token(self, token: str):
                 nonlocal captured_token
                 captured_token = token
-                return TokenData(
+                return TokenPayload(
                     sub="user-123",
                     email="test@example.com",
-                    role="user",
+                    role=UserRole.CUSTOMER,
                     tenant_id="tenant-123",
-                    restaurant_id="rest-456"
+                    restaurant_id="rest-456",
+                    exp=1234567890,  # Example timestamp
+                    iat=1234567890,  # Example timestamp
+                    token_type=TokenType.ACCESS
                 )
         
         return DecodeJWTService()
@@ -199,7 +200,6 @@ async def test_bearer_token_format_correctly_parsed(monkeypatch):
         assert request.state.authenticated is True
         return AsyncMock()
     
-    request = Request({"type": "http"})
-    request.headers = {"authorization": "Bearer valid_token"}
+    request = Request({"type": "http", "headers": [(b"authorization", b"Bearer valid_token")]})
     
     await middleware.dispatch(request, call_next)

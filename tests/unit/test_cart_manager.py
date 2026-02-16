@@ -10,9 +10,28 @@ from src.orders.cart import CartManager, Cart, CartItem
 async def redis_mock():
     """Mock Redis client."""
     redis = AsyncMock()
-    redis.get = AsyncMock(return_value=None)
-    redis.setex = AsyncMock()
-    redis.delete = AsyncMock()
+    # Use a dictionary to store data similar to actual Redis
+    storage = {}
+    
+    # Track calls to verify them later
+    calls_log = {'setex': [], 'get': [], 'delete': []}
+    
+    async def mock_setex(key, ex, value):
+        storage[key] = value
+        calls_log['setex'].append((key, ex, value))
+        
+    async def mock_get(key):
+        calls_log['get'].append(key)
+        return storage.get(key)
+        
+    async def mock_delete(key):
+        calls_log['delete'].append(key)
+        storage.pop(key, None)
+    
+    redis.setex = mock_setex
+    redis.get = mock_get
+    redis.delete = mock_delete
+    redis.calls_log = calls_log  # Add the call log to the mock
     return redis
 
 
@@ -45,7 +64,7 @@ async def test_add_first_item_to_cart(cart_manager, redis_mock):
     assert cart.items[0].quantity == 2
     assert cart.items[0].unit_price_cents == 1200
     
-    redis_mock.setex.assert_called_once()
+    assert len(redis_mock.calls_log['setex']) == 1
 
 
 @pytest.mark.asyncio
@@ -89,8 +108,9 @@ async def test_cart_ttl_expiration(cart_manager, redis_mock):
     )
 
     # Verify setex called with correct TTL
-    call_args = redis_mock.setex.call_args
-    assert call_args[0][1] == 3600  # TTL in seconds
+    assert len(redis_mock.calls_log['setex']) == 1
+    call_args = redis_mock.calls_log['setex'][0]
+    assert call_args[1] == 3600  # TTL in seconds
 
 
 @pytest.mark.asyncio
@@ -210,7 +230,7 @@ async def test_clear_cart(cart_manager, redis_mock):
     # Clear cart
     await cart_manager.clear_cart(tenant_id="tenant-123", session_id="session-456")
 
-    redis_mock.delete.assert_called_once()
+    assert len(redis_mock.calls_log['delete']) == 1
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,408 @@
+"""Unit tests for tenant management API endpoints."""
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from unittest.mock import AsyncMock, patch, MagicMock
+from src.api.main import app
+from src.db.models.user import User, UserRole as DBUserRole
+from src.db.models.tenant import Tenant
+from src.auth.password import hash_password
+from datetime import datetime, timezone
+from uuid import uuid4
+from decimal import Decimal
+
+
+@pytest.fixture
+def client():
+    """Create a test client for the FastAPI app."""
+    return TestClient(app)
+
+
+@pytest.mark.asyncio
+async def test_create_tenant_success(client, db_session):
+    """Test successful tenant creation."""
+    # Arrange
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,  # Platform admin doesn't belong to a tenant
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    create_data = {
+        "name": "Test Tenant",
+        "slug": "test-tenant",
+        "contact_email": "contact@testtenant.com",
+        "contact_phone": "+1234567890",
+        "billing_email": "billing@testtenant.com",
+        "application_fee_percent": 2.5
+    }
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",  # Platform admin has empty tenant_id
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/tenants", json=create_data, headers=headers)
+
+        # Assert
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Test Tenant"
+        assert data["slug"] == "test-tenant"
+        assert data["contact_email"] == "contact@testtenant.com"
+        assert data["application_fee_percent"] == 2.5
+        assert data["restaurant_count"] == 0
+        assert data["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_tenant_duplicate_slug(client, db_session):
+    """Test creating tenant with duplicate slug."""
+    # Arrange
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(user)
+    await db_session.commit()
+    
+    # Create an existing tenant with the same slug
+    existing_tenant = Tenant(
+        name="Existing Tenant",
+        slug="existing-tenant",
+        contact_email="contact@existing.com",
+        application_fee_percent=Decimal("0.025")  # 2.5%
+    )
+    db_session.add(existing_tenant)
+    await db_session.commit()
+
+    create_data = {
+        "name": "Duplicate Tenant",
+        "slug": "existing-tenant",  # Same slug as existing
+        "contact_email": "contact@duplicate.com",
+        "application_fee_percent": 3.0
+    }
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/tenants", json=create_data, headers=headers)
+
+        # Assert
+        assert response.status_code == 409
+        assert "Tenant with this slug already exists" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_list_tenants_success(client, db_session):
+    """Test listing all tenants."""
+    # Arrange
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(user)
+    await db_session.commit()
+    
+    # Create a tenant
+    tenant = Tenant(
+        id=uuid4(),
+        name="Test Tenant",
+        slug="test-tenant",
+        contact_email="contact@testtenant.com",
+        application_fee_percent=Decimal("0.025")  # 2.5%
+    )
+    db_session.add(tenant)
+    await db_session.commit()
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.get("/tenants", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
+        assert len(data["items"]) >= 1
+        # Find our tenant in the response
+        tenant_found = next((t for t in data["items"] if t["id"] == str(tenant.id)), None)
+        assert tenant_found is not None
+        assert tenant_found["name"] == "Test Tenant"
+        assert tenant_found["slug"] == "test-tenant"
+        assert tenant_found["application_fee_percent"] == 2.5
+
+
+@pytest.mark.asyncio
+async def test_get_current_tenant_success(client, db_session):
+    """Test getting current tenant details."""
+    # Arrange
+    tenant_id = str(uuid4())
+    
+    # Create a user in the database
+    password_hash = hash_password("SecurePassword123!")
+    user = User(
+        email="user@example.com",
+        password_hash=password_hash,
+        tenant_id=tenant_id,
+        role=DBUserRole.CUSTOMER,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(user)
+    await db_session.commit()
+    
+    # Create the tenant
+    tenant = Tenant(
+        id=uuid4(),
+        name="Current Tenant",
+        slug="current-tenant",
+        contact_email="contact@current.com",
+        application_fee_percent=Decimal("0.025")  # 2.5%
+    )
+    db_session.add(tenant)
+    await db_session.commit()
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": "CUSTOMER",
+            "tenant_id": tenant_id,
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token", "X-Tenant-ID": tenant_id}
+        response = client.get("/tenants/me", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(tenant.id)
+        assert data["name"] == "Current Tenant"
+        assert data["slug"] == "current-tenant"
+        assert data["contact_email"] == "contact@current.com"
+        assert data["application_fee_percent"] == 2.5
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_success(client, db_session):
+    """Test getting tenant details by ID."""
+    # Arrange
+    tenant_id = str(uuid4())
+    
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    admin_user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(admin_user)
+    await db_session.commit()
+    
+    # Create the tenant
+    tenant = Tenant(
+        id=tenant_id,
+        name="Specific Tenant",
+        slug="specific-tenant",
+        contact_email="contact@specific.com",
+        application_fee_percent=Decimal("0.030")  # 3.0%
+    )
+    db_session.add(tenant)
+    await db_session.commit()
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(admin_user.id),
+            "email": admin_user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.get(f"/tenants/{tenant_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(tenant_id)
+        assert data["name"] == "Specific Tenant"
+        assert data["slug"] == "specific-tenant"
+        assert data["application_fee_percent"] == 3.0
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_not_found(client, db_session):
+    """Test getting a non-existent tenant."""
+    # Arrange
+    fake_tenant_id = str(uuid4())
+    
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    admin_user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(admin_user)
+    await db_session.commit()
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(admin_user.id),
+            "email": admin_user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.get(f"/tenants/{fake_tenant_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
+        assert "Tenant not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_tenant_success(client, db_session):
+    """Test updating tenant details."""
+    # Arrange
+    tenant_id = str(uuid4())
+    
+    # Create a platform admin user in the database
+    password_hash = hash_password("SecurePassword123!")
+    admin_user = User(
+        email="admin@example.com",
+        password_hash=password_hash,
+        tenant_id=None,
+        role=DBUserRole.PLATFORM_ADMIN,
+        is_active=True,
+        is_verified=False
+    )
+    db_session.add(admin_user)
+    await db_session.commit()
+    
+    # Create the tenant
+    tenant = Tenant(
+        id=tenant_id,
+        name="Old Name",
+        slug="old-name",
+        contact_email="old@contact.com",
+        application_fee_percent=Decimal("0.025")  # 2.5%
+    )
+    db_session.add(tenant)
+    await db_session.commit()
+
+    update_data = {
+        "name": "Updated Name",
+        "contact_email": "updated@contact.com",
+        "application_fee_percent": 4.0,
+        "is_active": False
+    }
+
+    # Mock JWT service to return a valid user
+    with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
+        mock_jwt_service = AsyncMock()
+        mock_jwt_service_class.return_value = mock_jwt_service
+        
+        mock_jwt_service.verify_token.return_value = {
+            "user_id": str(admin_user.id),
+            "email": admin_user.email,
+            "role": "PLATFORM_ADMIN",
+            "tenant_id": "",
+            "restaurant_id": None
+        }
+
+        # Act
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.patch(f"/tenants/{tenant_id}", json=update_data, headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(tenant_id)
+        assert data["name"] == "Updated Name"
+        assert data["contact_email"] == "updated@contact.com"
+        assert data["application_fee_percent"] == 4.0
+        assert data["is_active"] is False

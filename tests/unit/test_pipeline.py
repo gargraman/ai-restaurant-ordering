@@ -361,3 +361,104 @@ class TestIngestDocuments:
         stats = await pipeline.ingest_documents([])
 
         assert stats["document_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_ingest_documents_without_embeddings(self):
+        """Test ingesting documents with generate_embeddings=False."""
+        mock_doc = MagicMock()
+        mock_doc.doc_id = "doc-1"
+        mock_doc.text = "Test"
+
+        mock_opensearch_indexer = MagicMock()
+        mock_opensearch_indexer.index_documents.return_value = {"success": 1, "failed": []}
+
+        mock_embedding_generator = AsyncMock()
+
+        pipeline = IngestionPipeline(
+            embedding_generator=mock_embedding_generator,
+            opensearch_indexer=mock_opensearch_indexer,
+        )
+
+        stats = await pipeline.ingest_documents([mock_doc], generate_embeddings=False)
+
+        assert stats["document_count"] == 1
+        assert stats["opensearch"]["success"] == 1
+        # Embeddings should not be generated
+        mock_embedding_generator.generate_document_embeddings.assert_not_called()
+
+
+class TestPipelineSingleFile:
+    """Tests for processing a single file."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_single_file(self, tmp_path):
+        """Test pipeline with a single JSON file input."""
+        sample_file = tmp_path / "restaurant.json"
+        sample_file.write_text(
+            """{
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": ["Italian"],
+                "location": {"address": "123 Main", "city": "Boston", "state": "MA", "zipCode": "02101", "coordinates": {"latitude": 42.36, "longitude": -71.06}}
+            },
+            "menus": [{
+                "name": "Catering",
+                "menuGroups": [{
+                    "name": "Entrees",
+                    "menuItems": [{
+                        "name": "Pasta",
+                        "description": "Good pasta",
+                        "price": {"basePrice": 10.0}
+                    }]
+                }]
+            }]
+        }"""
+        )
+
+        mock_embedding_generator = AsyncMock()
+        mock_opensearch_indexer = MagicMock()
+        mock_opensearch_indexer.index_documents.return_value = {"success": 1, "failed": []}
+        mock_pgvector_indexer = AsyncMock()
+        mock_pgvector_indexer.index_documents.return_value = {"success": 0, "failed": 0}
+
+        pipeline = IngestionPipeline(
+            embedding_generator=mock_embedding_generator,
+            opensearch_indexer=mock_opensearch_indexer,
+            pgvector_indexer=mock_pgvector_indexer,
+        )
+
+        stats = await pipeline.run(sample_file, skip_embeddings=True)
+
+        assert stats["transform"]["document_count"] == 1
+        assert stats["opensearch"]["success"] == 1
+        mock_opensearch_indexer.index_documents.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_pipeline_single_file_empty_result(self, tmp_path):
+        """Test pipeline with a file that yields no documents."""
+        sample_file = tmp_path / "empty.json"
+        sample_file.write_text(
+            """{
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": [],
+                "location": {"address": "1 St", "city": "X", "state": "MA", "zipCode": "02101", "coordinates": {"latitude": 42.0, "longitude": -71.0}}
+            },
+            "menus": [{"name": "M", "menuGroups": [{"name": "G", "menuItems": []}]}]
+        }"""
+        )
+
+        mock_opensearch_indexer = MagicMock()
+        mock_pgvector_indexer = AsyncMock()
+
+        pipeline = IngestionPipeline(
+            opensearch_indexer=mock_opensearch_indexer,
+            pgvector_indexer=mock_pgvector_indexer,
+        )
+
+        stats = await pipeline.run(sample_file, skip_embeddings=True)
+
+        assert stats["transform"]["document_count"] == 0
+        mock_opensearch_indexer.index_documents.assert_not_called()

@@ -132,6 +132,17 @@ class TestNeo4jIndexerOperations:
         assert stats == mock_record
 
     @pytest.mark.asyncio
+    async def test_get_stats_empty(self, mock_driver):
+        """Test getting stats when no data exists returns zeros."""
+        driver, session = mock_driver
+        session.run.return_value.single = AsyncMock(return_value=None)
+
+        indexer = Neo4jIndexer(driver=driver)
+        stats = await indexer.get_stats()
+
+        assert stats == {"restaurants": 0, "menus": 0, "groups": 0, "items": 0, "cuisines": 0}
+
+    @pytest.mark.asyncio
     async def test_index_restaurants_empty_input(self, mock_driver):
         """Test that empty restaurant list returns early."""
         driver, _ = mock_driver
@@ -141,6 +152,109 @@ class TestNeo4jIndexerOperations:
 
         assert result["restaurants"] == 0
         assert result["items"] == 0
+
+    @pytest.mark.asyncio
+    async def test_index_restaurant_basic(self, mock_driver):
+        """Test indexing a single restaurant with menu data using mocks."""
+        driver, session = mock_driver
+
+        # Build mock RestaurantData matching what neo4j_indexer accesses
+        mock_item = MagicMock()
+        mock_item.itemId = "i1"
+        mock_item.name = "Pasta Tray"
+        mock_item.description = "Fresh pasta"
+        mock_item.price = MagicMock(basePrice=89.99, displayPrice=89.99)
+        mock_item.serving = None
+        mock_item.dietaryLabels = ["vegetarian"]
+        mock_item.tags = ["popular"]
+
+        mock_group = MagicMock()
+        mock_group.groupId = "g1"
+        mock_group.name = "Entrees"
+        mock_group.description = None
+        mock_group.items = [mock_item]
+
+        mock_menu = MagicMock()
+        mock_menu.menuId = "m1"
+        mock_menu.name = "Catering"
+        mock_menu.description = None
+        mock_menu.groups = [mock_group]
+
+        mock_location = MagicMock()
+        mock_location.city = "Boston"
+        mock_location.state = "MA"
+        mock_location.zipCode = "02101"
+        mock_location.coordinates = MagicMock(latitude=42.36, longitude=-71.06)
+
+        mock_restaurant = MagicMock()
+        mock_restaurant.restaurantId = "r1"
+        mock_restaurant.name = "Test Restaurant"
+        mock_restaurant.cuisine = ["Italian"]
+        mock_restaurant.location = mock_location
+        mock_restaurant.menus = [mock_menu]
+
+        mock_data = MagicMock()
+        mock_data.restaurant = mock_restaurant
+        mock_data.metadata = MagicMock(sourcePlatform="test")
+
+        indexer = Neo4jIndexer(driver=driver)
+        stats = await indexer.index_restaurant(mock_data)
+
+        assert stats["restaurants"] == 1
+        assert stats["menus"] == 1
+        assert stats["groups"] == 1
+        assert stats["items"] == 1
+        assert stats["cuisines"] == 1
+        # session.run: restaurant + cuisine + menu + group + item = 5
+        assert session.run.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_index_restaurants_multiple(self, mock_driver):
+        """Test indexing multiple restaurants aggregates stats."""
+        driver, session = mock_driver
+
+        indexer = Neo4jIndexer(driver=driver)
+
+        # Create a simple mock that returns stats
+        async def mock_index_restaurant(data):
+            return {"restaurants": 1, "menus": 1, "groups": 1, "items": 2, "cuisines": 1}
+
+        indexer.index_restaurant = mock_index_restaurant
+
+        mock_data = [MagicMock(), MagicMock()]
+
+        result = await indexer.index_restaurants(mock_data)
+
+        assert result["restaurants"] == 2
+        assert result["items"] == 4
+
+    @pytest.mark.asyncio
+    async def test_index_restaurants_handles_error(self, mock_driver):
+        """Test that errors on individual restaurants are caught."""
+        driver, session = mock_driver
+
+        indexer = Neo4jIndexer(driver=driver)
+
+        call_count = [0]
+
+        async def mock_index_restaurant(data):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("Neo4j error")
+            return {"restaurants": 1, "menus": 0, "groups": 0, "items": 0, "cuisines": 0}
+
+        indexer.index_restaurant = mock_index_restaurant
+
+        mock_data = [MagicMock(), MagicMock()]
+        mock_data[0].restaurant = MagicMock()
+        mock_data[0].restaurant.restaurantId = "r1"
+        mock_data[1].restaurant = MagicMock()
+        mock_data[1].restaurant.restaurantId = "r2"
+
+        result = await indexer.index_restaurants(mock_data)
+
+        # First failed, second succeeded
+        assert result["restaurants"] == 1
 
 
 class TestNeo4jIndexerRelationships:

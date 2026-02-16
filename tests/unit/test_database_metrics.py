@@ -19,6 +19,11 @@ def mock_async_session():
     session = AsyncMock(spec=AsyncSession)
     session.bind = MagicMock()  # This represents the engine
     session.bind.pool = MagicMock(spec=Pool)
+    # Mock pool properties as attributes, not methods
+    session.bind.pool.size = 10
+    session.bind.pool.checkedout = 5
+    session.bind.pool.overflow = 2
+    session.bind.pool.connections = 7
     return session
 
 
@@ -27,10 +32,11 @@ def mock_engine():
     """Mock database engine."""
     engine = MagicMock()
     engine.pool = MagicMock(spec=Pool)
-    # Mock pool properties
-    engine.pool.size.return_value = 10
-    engine.pool.checkedout.return_value = 5
-    engine.pool.overflow.return_value = 2
+    # Mock pool properties as attributes, not methods
+    engine.pool.size = 10
+    engine.pool.checkedout = 5
+    engine.pool.overflow = 2
+    engine.pool.connections = 7
     return engine
 
 
@@ -67,14 +73,15 @@ async def test_collect_database_metrics_with_session(mock_async_session):
 @pytest.mark.asyncio
 async def test_collect_database_metrics_with_engine(mock_engine):
     """Test collecting database metrics from an engine."""
+    # The mock_engine fixture already sets up the pool properties
     # Mock the engine pool properties
     mock_engine.pool.size = 20
     mock_engine.pool.checkedout = 8
     mock_engine.pool.overflow = 5
     mock_engine.pool.connections = 12
-    
+
     metrics = await collect_database_metrics(engine=mock_engine)
-    
+
     # Verify the metrics structure
     assert isinstance(metrics, dict)
     assert "pool_size" in metrics
@@ -82,7 +89,7 @@ async def test_collect_database_metrics_with_engine(mock_engine):
     assert "max_overflow" in metrics
     assert "connections" in metrics
     assert "timestamp" in metrics
-    
+
     # Verify values
     assert metrics["pool_size"] == 20
     assert metrics["checked_out_connections"] == 8
