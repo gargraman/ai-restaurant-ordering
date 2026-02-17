@@ -21,6 +21,7 @@ const nextConfig = {
         { source: '/chat/:path*', destination: `${backendUrl}/chat/:path*` },
         { source: '/session/:path*', destination: `${backendUrl}/session/:path*` },
         { source: '/orders/:path*', destination: `${backendUrl}/orders/:path*` },
+        { source: '/admin/restaurants/:path*', destination: `${backendUrl}/restaurants/:path*` },
         { source: '/admin/:path*', destination: `${backendUrl}/admin/:path*` },
         { source: '/health', destination: `${backendUrl}/health` },
         { source: '/metrics', destination: `${backendUrl}/metrics` },

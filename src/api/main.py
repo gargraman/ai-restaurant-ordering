@@ -294,7 +294,18 @@ def create_app() -> FastAPI:
         """Get session state."""
         session = await session_manager.get_session(session_id)
         if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+            # Return empty session for new/unknown session IDs instead of 404.
+            # The UI fetches session on mount before any interaction has occurred.
+            from datetime import datetime
+            now = datetime.utcnow().isoformat()
+            return SessionResponse(
+                session_id=session_id,
+                created_at=now,
+                last_activity=now,
+                entities={},
+                conversation_length=0,
+                previous_results_count=0,
+            )
 
         return SessionResponse(
             session_id=session.session_id,

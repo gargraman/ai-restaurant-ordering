@@ -30,6 +30,7 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
+    "email-validator>=2.1.0",
 
     # Data Processing
     "faker>=22.0.0",

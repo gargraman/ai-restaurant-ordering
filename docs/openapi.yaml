@@ -1,0 +1,2547 @@
+openapi: 3.1.0
+info:
+  title: Hybrid Search API
+  description: |
+    Conversational Hybrid Search & RAG System for Catering Menus
+
+    This API provides a multi-tenant platform for restaurant menu search, ordering, and payment processing.
+    It combines BM25 lexical search, vector similarity search, and optional graph-based search to deliver
+    intelligent conversational search results.
+
+    ## Key Features
+    - **Hybrid Search**: Combines BM25, vector (pgvector), and graph (Neo4j) search with RRF fusion
+    - **Conversational AI**: Session-based conversational search with intent detection
+    - **Multi-tenancy**: Full tenant isolation with Row-Level Security (RLS)
+    - **Authentication**: JWT-based auth with role-based access control (RBAC)
+    - **Payments**: Stripe Connect integration for restaurant payments
+    - **POS Integration**: Square, Toast, and other POS system integrations
+    - **Order Management**: Complete order lifecycle from cart to fulfillment
+
+    ## Feature Flags
+    - `ENABLE_GRAPH_SEARCH`: Enable Neo4j graph search (default: false)
+    - `ENABLE_3WAY_RRF`: Enable 3-way RRF fusion (BM25 + vector + graph) (default: false)
+    - `ENABLE_PAYMENTS`: Enable Stripe payment processing (default: false)
+    - `ENABLE_POS_INTEGRATION`: Enable POS system integrations (default: false)
+
+    ## Authentication
+    Most endpoints require JWT Bearer authentication. Obtain tokens via `/auth/register` or `/auth/login`.
+    Include the access token in the `Authorization` header: `Bearer <access_token>`
+
+  version: 0.1.0
+  contact:
+    name: API Support
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: http://localhost:8000/api
+    description: Local development with prefix
+  - url: https://api.example.com
+    description: Production server (example)
+
+tags:
+  - name: Search
+    description: Conversational hybrid search endpoints
+  - name: Sessions
+    description: Session management for conversational context
+  - name: Authentication
+    description: User registration, login, and token management
+  - name: Tenants
+    description: Tenant management (platform admin only)
+  - name: Restaurants
+    description: Restaurant management and onboarding
+  - name: Orders
+    description: Order and cart management
+  - name: Webhooks
+    description: Webhook handlers for Stripe and POS providers
+  - name: System
+    description: Health checks and metrics
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/login or /auth/register
+
+  schemas:
+    # Search Models
+    SearchRequest:
+      type: object
+      required:
+        - session_id
+        - user_input
+      properties:
+        session_id:
+          type: string
+          minLength: 8
+          maxLength: 64
+          description: Session ID for conversational context
+          example: "session_abc123xyz789"
+        user_input:
+          type: string
+          maxLength: 500
+          description: User's search query or conversational input
+          example: "Find Italian catering in Boston for 20 people"
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+          description: Maximum number of results to return
+
+    MenuItemResult:
+      type: object
+      required:
+        - doc_id
+        - restaurant_name
+        - city
+        - state
+        - item_name
+      properties:
+        doc_id:
+          type: string
+          description: Unique document ID
+          example: "item_123"
+        restaurant_name:
+          type: string
+          description: Restaurant name
+          example: "Tony's Catering"
+        city:
+          type: string
+          example: "Boston"
+        state:
+          type: string
+          example: "MA"
+        item_name:
+          type: string
+          description: Menu item name
+          example: "Italian Wedding Buffet"
+        item_description:
+          type: string
+          nullable: true
+          description: Detailed item description
+          example: "Classic Italian buffet with pasta, salad, and bread"
+        display_price:
+          type: number
+          format: float
+          nullable: true
+          description: Display price (may be per person or total)
+          example: 15.99
+        price_per_person:
+          type: number
+          format: float
+          nullable: true
+          description: Price per person if applicable
+          example: 15.99
+        serves_min:
+          type: integer
+          nullable: true
+          description: Minimum number of people served
+          example: 10
+        serves_max:
+          type: integer
+          nullable: true
+          description: Maximum number of people served
+          example: 50
+        dietary_labels:
+          type: array
+          items:
+            type: string
+          description: Dietary labels (vegetarian, vegan, gluten-free, etc.)
+          example: ["vegetarian", "gluten-free"]
+        tags:
+          type: array
+          items:
+            type: string
+          description: Additional tags for categorization
+          example: ["italian", "buffet", "catering"]
+        rrf_score:
+          type: number
+          format: float
+          description: Reciprocal Rank Fusion score (0-1, higher is better)
+          example: 0.856
+
+    SearchResponse:
+      type: object
+      required:
+        - session_id
+        - resolved_query
+        - intent
+        - is_follow_up
+        - filters
+        - results
+        - answer
+        - confidence
+        - processing_time_ms
+      properties:
+        session_id:
+          type: string
+          description: Session ID
+          example: "session_abc123xyz789"
+        resolved_query:
+          type: string
+          description: Query after context resolution and rewriting
+          example: "Italian catering restaurants in Boston serving 20 people"
+        intent:
+          type: string
+          enum: [search, filter, clarify, compare, graph]
+          description: Detected user intent
+          example: "search"
+        is_follow_up:
+          type: boolean
+          description: Whether this is a follow-up query
+          example: false
+        filters:
+          type: object
+          additionalProperties: true
+          description: Extracted filters (city, cuisine, price, etc.)
+          example:
+            city: "Boston"
+            cuisine: "Italian"
+            min_people: 20
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemResult'
+          description: Search results
+        answer:
+          type: string
+          description: Natural language answer generated by RAG
+          example: "I found 8 Italian catering options in Boston that can serve 20 people..."
+        confidence:
+          type: number
+          format: float
+          description: Confidence score (0-1)
+          example: 0.92
+        processing_time_ms:
+          type: number
+          format: float
+          description: Processing time in milliseconds
+          example: 234.56
+
+    SessionResponse:
+      type: object
+      required:
+        - session_id
+        - created_at
+        - last_activity
+        - entities
+        - conversation_length
+        - previous_results_count
+      properties:
+        session_id:
+          type: string
+          example: "session_abc123xyz789"
+        created_at:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+        last_activity:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+        entities:
+          type: object
+          additionalProperties: true
+          description: Extracted entities (locations, cuisines, etc.)
+          example:
+            city: "Boston"
+            cuisine: "Italian"
+        conversation_length:
+          type: integer
+          description: Number of conversation turns
+          example: 3
+        previous_results_count:
+          type: integer
+          description: Number of results from previous search
+          example: 8
+
+    FeedbackRequest:
+      type: object
+      required:
+        - doc_id
+        - rating
+      properties:
+        doc_id:
+          type: string
+          description: Document ID being rated
+          example: "item_123"
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: User rating (1-5 stars)
+          example: 5
+        comment:
+          type: string
+          nullable: true
+          description: Optional feedback comment
+          example: "Exactly what I was looking for!"
+
+    # Authentication Models
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          format: password
+          description: User password (min 8 characters)
+          example: "SecureP@ss123"
+        first_name:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "John"
+        last_name:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "Doe"
+        phone:
+          type: string
+          maxLength: 20
+          nullable: true
+          example: "+1-555-123-4567"
+        tenant_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Tenant ID (required for non-platform users)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        role:
+          type: string
+          enum: [customer, restaurant_admin, platform_admin]
+          default: customer
+          description: User role
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "SecureP@ss123"
+
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: JWT refresh token
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          description: JWT refresh token (longer-lived)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          default: bearer
+          example: "bearer"
+        expires_in:
+          type: integer
+          description: Access token expiry in seconds
+          example: 86400
+
+    UserResponse:
+      type: object
+      required:
+        - id
+        - email
+        - role
+        - is_active
+        - is_verified
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User ID
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [customer, restaurant_admin, restaurant_staff, tenant_admin, platform_admin]
+        tenant_id:
+          type: string
+          format: uuid
+          nullable: true
+        restaurant_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+        is_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    # Tenant Models
+    CreateTenantRequest:
+      type: object
+      required:
+        - name
+        - slug
+        - contact_email
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Tenant name
+          example: "Acme Catering Co"
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9-]+$'
+          description: URL-friendly slug (lowercase, alphanumeric, hyphens)
+          example: "acme-catering"
+        contact_email:
+          type: string
+          format: email
+          description: Primary contact email
+          example: "contact@acme-catering.com"
+        contact_phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        billing_email:
+          type: string
+          format: email
+          nullable: true
+          example: "billing@acme-catering.com"
+        application_fee_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 30
+          default: 2.5
+          description: Platform fee percentage (0-30%)
+          example: 2.5
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          nullable: true
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        billing_email:
+          type: string
+          format: email
+          nullable: true
+        application_fee_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 30
+          nullable: true
+        is_active:
+          type: boolean
+          nullable: true
+          description: Whether tenant is active
+
+    TenantResponse:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - is_active
+        - application_fee_percent
+        - restaurant_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        is_active:
+          type: boolean
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        billing_email:
+          type: string
+          format: email
+          nullable: true
+        application_fee_percent:
+          type: number
+          format: float
+          description: Platform fee percentage (e.g., 2.5 for 2.5%)
+        restaurant_count:
+          type: integer
+          description: Number of restaurants under this tenant
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TenantListResponse:
+      type: object
+      required:
+        - items
+        - total
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantResponse'
+        total:
+          type: integer
+          description: Total number of tenants matching filters
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Restaurant Models
+    CreateRestaurantRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Tony's Catering"
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9-]+$'
+          example: "tonys-catering"
+        description:
+          type: string
+          nullable: true
+          example: "Family-owned Italian catering since 1985"
+        address_line1:
+          type: string
+          nullable: true
+          example: "123 Main St"
+        address_line2:
+          type: string
+          nullable: true
+          example: "Suite 200"
+        city:
+          type: string
+          nullable: true
+          example: "Boston"
+        state:
+          type: string
+          nullable: true
+          example: "MA"
+        postal_code:
+          type: string
+          nullable: true
+          example: "02101"
+        country:
+          type: string
+          maxLength: 2
+          default: US
+          example: "US"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "orders@tonyscatering.com"
+        timezone:
+          type: string
+          default: America/New_York
+          example: "America/New_York"
+
+    UpdateRestaurantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        address_line1:
+          type: string
+          nullable: true
+        address_line2:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        postal_code:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+        operating_hours:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Operating hours (JSON object)
+        is_accepting_orders:
+          type: boolean
+          nullable: true
+
+    RestaurantResponse:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+        - slug
+        - is_active
+        - country
+        - timezone
+        - is_accepting_orders
+        - stripe_connected
+        - pos_connected
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        address_line1:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        postal_code:
+          type: string
+          nullable: true
+        country:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        timezone:
+          type: string
+        is_accepting_orders:
+          type: boolean
+        stripe_connected:
+          type: boolean
+          description: Whether Stripe Connect is set up and enabled
+        pos_connected:
+          type: boolean
+          description: Whether a POS system is connected
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StripeConnectRequest:
+      type: object
+      required:
+        - email
+        - refresh_url
+        - return_url
+      properties:
+        email:
+          type: string
+          format: email
+          description: Restaurant contact email for Stripe account
+          example: "owner@restaurant.com"
+        refresh_url:
+          type: string
+          format: uri
+          description: URL to redirect if onboarding needs to be restarted
+          example: "https://app.example.com/restaurants/stripe/refresh"
+        return_url:
+          type: string
+          format: uri
+          description: URL to redirect after successful onboarding
+          example: "https://app.example.com/restaurants/stripe/success"
+
+    StripeConnectResponse:
+      type: object
+      required:
+        - account_id
+        - onboarding_url
+        - expires_at
+      properties:
+        account_id:
+          type: string
+          description: Stripe Connect account ID
+          example: "acct_1234567890"
+        onboarding_url:
+          type: string
+          format: uri
+          description: Stripe onboarding URL (expires quickly)
+          example: "https://connect.stripe.com/setup/e/acct_1234567890/..."
+        expires_at:
+          type: string
+          format: date-time
+          description: Onboarding URL expiration time
+
+    StripeStatusResponse:
+      type: object
+      required:
+        - status
+        - charges_enabled
+        - payouts_enabled
+        - details_submitted
+        - onboarding_complete
+      properties:
+        account_id:
+          type: string
+          nullable: true
+          description: Stripe account ID (null if not connected)
+        status:
+          type: string
+          enum: [not_connected, pending, active, enabled, disabled]
+          description: Account status
+        charges_enabled:
+          type: boolean
+          description: Whether account can accept charges
+        payouts_enabled:
+          type: boolean
+          description: Whether account can receive payouts
+        details_submitted:
+          type: boolean
+          description: Whether all required details are submitted
+        onboarding_complete:
+          type: boolean
+          description: Whether onboarding is fully complete
+
+    POSConnectRequest:
+      type: object
+      required:
+        - provider
+        - credentials
+      properties:
+        provider:
+          type: string
+          enum: [square, toast, olo, omnivore]
+          description: POS provider name
+          example: "square"
+        credentials:
+          type: object
+          additionalProperties: true
+          description: Provider-specific credentials (encrypted before storage)
+          example:
+            access_token: "sq0atp-..."
+            merchant_id: "MERCHANT123"
+        location_id:
+          type: string
+          nullable: true
+          description: POS location ID
+          example: "LOCATION456"
+
+    POSStatusResponse:
+      type: object
+      required:
+        - status
+        - connected
+      properties:
+        provider:
+          type: string
+          enum: [square, toast, olo, omnivore]
+          nullable: true
+          description: POS provider (null if not connected)
+        status:
+          type: string
+          enum: [not_connected, pending, connected, error]
+        location_id:
+          type: string
+          nullable: true
+        last_catalog_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last catalog synchronization timestamp
+        connected:
+          type: boolean
+
+    # Order Models
+    AddToCartRequest:
+      type: object
+      required:
+        - menu_item_id
+        - name
+        - unit_price_cents
+        - restaurant_id
+        - restaurant_name
+      properties:
+        menu_item_id:
+          type: string
+          description: Menu item ID
+          example: "item_123"
+        name:
+          type: string
+          description: Item name
+          example: "Italian Wedding Buffet"
+        unit_price_cents:
+          type: integer
+          description: Unit price in cents
+          example: 1599
+        restaurant_id:
+          type: string
+          format: uuid
+          description: Restaurant ID
+        restaurant_name:
+          type: string
+          description: Restaurant name
+          example: "Tony's Catering"
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+          default: 1
+        modifiers:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          default: []
+          description: Item modifiers (toppings, sides, etc.)
+        special_instructions:
+          type: string
+          nullable: true
+          description: Special instructions for this item
+          example: "Extra napkins please"
+
+    UpdateCartItemRequest:
+      type: object
+      required:
+        - quantity
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: New quantity (0 to remove)
+
+    CartItemResponse:
+      type: object
+      required:
+        - id
+        - menu_item_id
+        - name
+        - quantity
+        - unit_price_cents
+        - total_cents
+        - modifiers
+      properties:
+        id:
+          type: string
+          description: Cart item ID
+        menu_item_id:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+        total_cents:
+          type: integer
+          description: quantity * unit_price_cents
+        modifiers:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        special_instructions:
+          type: string
+          nullable: true
+
+    CartResponse:
+      type: object
+      required:
+        - session_id
+        - items
+        - item_count
+        - subtotal_cents
+      properties:
+        session_id:
+          type: string
+        restaurant_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Restaurant ID (null for empty cart)
+        restaurant_name:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItemResponse'
+        item_count:
+          type: integer
+          description: Total number of items in cart
+        subtotal_cents:
+          type: integer
+          description: Subtotal in cents (before tax/fees)
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - customer_name
+        - fulfillment_type
+      properties:
+        customer_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "John Doe"
+        customer_email:
+          type: string
+          format: email
+          nullable: true
+          example: "john@example.com"
+        customer_phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        fulfillment_type:
+          type: string
+          enum: [pickup, delivery]
+          default: pickup
+          pattern: '^(pickup|delivery)$'
+        delivery_address:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Delivery address (required if fulfillment_type=delivery)
+        notes:
+          type: string
+          nullable: true
+          description: Order notes
+        tip_cents:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Tip amount in cents
+        guest_identifier:
+          type: string
+          nullable: true
+          description: Identifier for guest checkout (email, phone, or session ID)
+
+    OrderItemResponse:
+      type: object
+      required:
+        - id
+        - name
+        - quantity
+        - unit_price_cents
+        - modifiers_price_cents
+        - total_cents
+      properties:
+        id:
+          type: string
+          format: uuid
+        menu_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+        modifiers_price_cents:
+          type: integer
+        total_cents:
+          type: integer
+        modifiers:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    PaymentIntentResponse:
+      type: object
+      required:
+        - id
+        - stripe_payment_intent_id
+        - status
+        - amount_cents
+      properties:
+        id:
+          type: string
+          format: uuid
+        stripe_payment_intent_id:
+          type: string
+          description: Stripe Payment Intent ID
+          example: "pi_1234567890"
+        status:
+          type: string
+          enum: [pending, processing, succeeded, canceled, failed]
+        amount_cents:
+          type: integer
+        client_secret:
+          type: string
+          nullable: true
+          description: Client secret for Stripe.js (null after payment)
+
+    OrderResponse:
+      type: object
+      required:
+        - id
+        - order_number
+        - status
+        - restaurant_id
+        - fulfillment_type
+        - subtotal_cents
+        - tax_cents
+        - tip_cents
+        - delivery_fee_cents
+        - total_cents
+        - items
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_number:
+          type: string
+          description: Human-readable order number
+          example: "ORD-20240115-001"
+        status:
+          type: string
+          enum: [pending, paid, preparing, ready, sent_to_pos, completed, canceled, failed, refunded]
+        restaurant_id:
+          type: string
+          format: uuid
+        customer_name:
+          type: string
+          nullable: true
+        customer_email:
+          type: string
+          format: email
+          nullable: true
+        fulfillment_type:
+          type: string
+          enum: [pickup, delivery]
+        subtotal_cents:
+          type: integer
+        tax_cents:
+          type: integer
+        tip_cents:
+          type: integer
+        delivery_fee_cents:
+          type: integer
+        total_cents:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        payment:
+          allOf:
+            - $ref: '#/components/schemas/PaymentIntentResponse'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Error Models
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: "Authentication required"
+
+    ValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  loc:
+                    type: array
+                    items:
+                      type: string
+                  msg:
+                    type: string
+                  type:
+                    type: string
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: "0.1.0"
+
+paths:
+  # System Endpoints
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Check API health status
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /metrics:
+    get:
+      tags:
+        - System
+      summary: Prometheus metrics
+      description: Prometheus metrics endpoint for monitoring
+      operationId: getMetrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus metrics in text format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # Search Endpoints
+  /chat/search:
+    post:
+      tags:
+        - Search
+      summary: Execute conversational search
+      description: |
+        Execute a conversational hybrid search query. This endpoint:
+        1. Loads or creates a session for conversational context
+        2. Runs the LangGraph pipeline (intent detection, query rewriting, hybrid search, RAG)
+        3. Updates session with results
+        4. Returns search results with natural language answer
+
+        Supports follow-up queries that reference previous context.
+
+        Examples:
+        - "Find Italian catering in Boston for 20 people"
+        - "Show me vegetarian options" (follow-up)
+        - "Cheaper ones under $15 per person" (follow-up)
+      operationId: chatSearch
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            examples:
+              initial_query:
+                summary: Initial search query
+                value:
+                  session_id: "session_abc123"
+                  user_input: "Find Italian catering in Boston for 20 people"
+                  max_results: 10
+              follow_up:
+                summary: Follow-up query
+                value:
+                  session_id: "session_abc123"
+                  user_input: "Show me vegetarian options"
+                  max_results: 10
+      responses:
+        '200':
+          description: Search results with conversational answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Session Endpoints
+  /session/{session_id}:
+    get:
+      tags:
+        - Sessions
+      summary: Get session state
+      description: Retrieve session state including conversation history and entities
+      operationId: getSession
+      security: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Sessions
+      summary: Delete session
+      description: Clear session and start fresh
+      operationId: deleteSession
+      security: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  session_id:
+                    type: string
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /session/{session_id}/feedback:
+    post:
+      tags:
+        - Sessions
+      summary: Submit relevance feedback
+      description: Submit user feedback on search result quality (for model improvement)
+      operationId: submitFeedback
+      security: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: Feedback received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: received
+                  doc_id:
+                    type: string
+                  rating:
+                    type: integer
+
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: |
+        Create a new user account and return JWT tokens.
+
+        - Platform admins can register without a tenant_id
+        - All other roles require a valid tenant_id
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              customer:
+                summary: Register as customer
+                value:
+                  email: "customer@example.com"
+                  password: "SecureP@ss123"
+                  first_name: "John"
+                  last_name: "Doe"
+                  tenant_id: "550e8400-e29b-41d4-a716-446655440000"
+                  role: "customer"
+              restaurant_admin:
+                summary: Register as restaurant admin
+                value:
+                  email: "admin@restaurant.com"
+                  password: "SecureP@ss123"
+                  tenant_id: "550e8400-e29b-41d4-a716-446655440000"
+                  role: "restaurant_admin"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid request (missing tenant_id, weak password, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate with email and password, receive JWT tokens
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Use refresh token to obtain new access and refresh tokens
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: |
+        Logout current user.
+
+        Note: With stateless JWT, logout is handled client-side by discarding tokens.
+        For enhanced security, implement token blacklisting with Redis.
+      operationId: logout
+      responses:
+        '204':
+          description: Logout successful (no content)
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Get authenticated user's profile information
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Tenant Endpoints (Platform Admin Only)
+  /tenants:
+    post:
+      tags:
+        - Tenants
+      summary: Create tenant
+      description: Create a new tenant (platform admin only)
+      operationId: createTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          description: Tenant slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Tenants
+      summary: List tenants
+      description: List all tenants (platform admin only)
+      operationId: listTenants
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+          description: Filter by active status
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /tenants/me:
+    get:
+      tags:
+        - Tenants
+      summary: Get current tenant
+      description: Get the current user's tenant details
+      operationId: getCurrentTenant
+      responses:
+        '200':
+          description: Current tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tenants/{tenant_id}:
+    get:
+      tags:
+        - Tenants
+      summary: Get tenant by ID
+      description: Get tenant details (platform admin only)
+      operationId: getTenant
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Tenants
+      summary: Update tenant
+      description: Update tenant details (platform admin only)
+      operationId: updateTenant
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+      responses:
+        '200':
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Restaurant Endpoints
+  /restaurants:
+    post:
+      tags:
+        - Restaurants
+      summary: Create restaurant
+      description: Create a new restaurant for the tenant (restaurant_admin or platform_admin)
+      operationId: createRestaurant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRestaurantRequest'
+      responses:
+        '201':
+          description: Restaurant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          description: Restaurant slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Restaurants
+      summary: List restaurants
+      description: List restaurants for the tenant
+      operationId: listRestaurants
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /restaurants/{restaurant_id}:
+    get:
+      tags:
+        - Restaurants
+      summary: Get restaurant
+      description: Get restaurant details
+      operationId: getRestaurant
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Restaurant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Restaurants
+      summary: Update restaurant
+      description: Update restaurant details (restaurant_admin or platform_admin)
+      operationId: updateRestaurant
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRestaurantRequest'
+      responses:
+        '200':
+          description: Restaurant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Stripe Connect Endpoints
+  /restaurants/{restaurant_id}/stripe/connect:
+    post:
+      tags:
+        - Restaurants
+      summary: Initiate Stripe Connect onboarding
+      description: |
+        Initiate Stripe Connect onboarding for a restaurant (requires ENABLE_PAYMENTS=true).
+
+        Creates a Stripe Connect account and returns an onboarding URL.
+        The restaurant owner completes onboarding in Stripe's hosted flow.
+      operationId: initiateStripeConnect
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StripeConnectRequest'
+      responses:
+        '200':
+          description: Onboarding link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeConnectResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{restaurant_id}/stripe/status:
+    get:
+      tags:
+        - Restaurants
+      summary: Get Stripe account status
+      description: Get Stripe Connect account status for a restaurant
+      operationId: getStripeStatus
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Stripe account status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{restaurant_id}/stripe/refresh-link:
+    post:
+      tags:
+        - Restaurants
+      summary: Refresh Stripe onboarding link
+      description: |
+        Generate a new Stripe onboarding link (links expire quickly).
+
+        Use this if the user needs to restart or continue onboarding.
+      operationId: refreshStripeLink
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StripeConnectRequest'
+      responses:
+        '200':
+          description: New onboarding link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeConnectResponse'
+        '400':
+          description: Restaurant does not have a Stripe account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # POS Connection Endpoints
+  /restaurants/{restaurant_id}/pos/connect:
+    post:
+      tags:
+        - Restaurants
+      summary: Connect POS provider
+      description: |
+        Connect a POS provider to a restaurant (requires ENABLE_POS_INTEGRATION=true).
+
+        Supported providers: square, toast, olo, omnivore
+      operationId: connectPOS
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/POSConnectRequest'
+      responses:
+        '200':
+          description: POS connection initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/POSStatusResponse'
+        '400':
+          description: Invalid POS provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{restaurant_id}/pos/status:
+    get:
+      tags:
+        - Restaurants
+      summary: Get POS connection status
+      description: Get POS connection status for a restaurant
+      operationId: getPOSStatus
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: POS connection status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/POSStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Restaurant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Cart Endpoints
+  /orders/cart:
+    get:
+      tags:
+        - Orders
+      summary: Get cart
+      description: Get current cart contents for a session
+      operationId: getCart
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Current cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Orders
+      summary: Clear cart
+      description: Remove all items from cart
+      operationId: clearCart
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Cart cleared
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /orders/cart/items:
+    post:
+      tags:
+        - Orders
+      summary: Add item to cart
+      description: Add a menu item to the cart
+      operationId: addToCart
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddToCartRequest'
+      responses:
+        '201':
+          description: Item added to cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          description: Invalid request (e.g., mixing items from different restaurants)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /orders/cart/items/{item_id}:
+    patch:
+      tags:
+        - Orders
+      summary: Update cart item quantity
+      description: Update quantity of a cart item (set to 0 to remove)
+      operationId: updateCartItem
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCartItemRequest'
+      responses:
+        '200':
+          description: Cart item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Cart item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Orders
+      summary: Remove cart item
+      description: Remove an item from the cart
+      operationId: removeCartItem
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item removed from cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Cart item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Order Endpoints
+  /orders:
+    post:
+      tags:
+        - Orders
+      summary: Create order from cart
+      description: |
+        Create an order from cart and initiate payment.
+
+        Requires ENABLE_PAYMENTS=true. Creates a Stripe Payment Intent and returns
+        the client_secret for completing payment with Stripe.js on the frontend.
+
+        Supports both authenticated users and guest checkout.
+      operationId: createOrder
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created with payment intent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Validation error (empty cart, invalid data, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '502':
+          description: Payment provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Orders
+      summary: List orders
+      description: List orders for the tenant (filtered by user role)
+      operationId: listOrders
+      parameters:
+        - name: restaurant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by restaurant ID
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, paid, preparing, ready, sent_to_pos, completed, canceled, failed, refunded]
+          description: Filter by order status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /orders/{order_id}:
+    get:
+      tags:
+        - Orders
+      summary: Get order by ID
+      description: Get order details by ID
+      operationId: getOrder
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/lookup/{order_number}:
+    get:
+      tags:
+        - Orders
+      summary: Get order by number
+      description: |
+        Look up order by order number with customer verification.
+
+        Allows customers to track their order using the order number and email.
+        No authentication required.
+      operationId: getOrderByNumber
+      security: []
+      parameters:
+        - name: order_number
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Order number
+          example: "ORD-20240115-001"
+        - name: customer_email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+          description: Customer email for verification
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '404':
+          description: Order not found or email doesn't match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{order_id}/cancel:
+    post:
+      tags:
+        - Orders
+      summary: Cancel order
+      description: Cancel an order (if cancellable)
+      operationId: cancelOrder
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: reason
+          in: query
+          schema:
+            type: string
+          description: Cancellation reason
+      responses:
+        '200':
+          description: Order canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Order cannot be canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Webhook Endpoints
+  /webhooks/stripe:
+    post:
+      tags:
+        - Webhooks
+      summary: Stripe webhook handler
+      description: |
+        Handle incoming Stripe webhooks (signature verified).
+
+        Processes events:
+        - payment_intent.succeeded: Mark order as paid, trigger POS injection
+        - payment_intent.payment_failed: Mark order as failed
+        - charge.refunded: Process refund
+        - account.updated: Update Connect account status
+      operationId: handleStripeWebhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe event payload
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [processed, already_processed]
+        '400':
+          description: Invalid signature or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Webhook processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webhooks/square:
+    post:
+      tags:
+        - Webhooks
+      summary: Square webhook handler
+      description: |
+        Handle incoming Square webhooks (signature verified).
+
+        Processes order status updates from Square POS.
+      operationId: handleSquareWebhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Square event payload
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [processed, already_processed]
+        '400':
+          description: Invalid signature or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Webhook processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webhooks/toast:
+    post:
+      tags:
+        - Webhooks
+      summary: Toast webhook handler
+      description: |
+        Handle incoming Toast POS webhooks.
+
+        Processes order status updates from Toast.
+      operationId: handleToastWebhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Toast event payload
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [processed, already_processed]
+        '500':
+          description: Webhook processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: "Not authenticated"
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: "Insufficient permissions"

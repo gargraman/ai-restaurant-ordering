@@ -27,8 +27,8 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install nginx
-RUN apk add --no-cache nginx
+# Install nginx and curl for healthcheck
+RUN apk add --no-cache nginx curl
 
 # Copy built Next.js app from builder
 COPY --from=builder /app/.next/standalone ./

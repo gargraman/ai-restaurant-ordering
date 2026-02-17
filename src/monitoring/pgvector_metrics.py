@@ -45,14 +45,14 @@ class PgvectorMetricsCollector:
                     rows = await conn.fetch(
                         """
                         SELECT
-                            idx.indexname,
+                            idx.indexrelname AS indexname,
                             pg_relation_size(idx.indexrelid) AS size_bytes,
                             idx.idx_scan,
                             idx.idx_tup_read,
                             idx.idx_tup_fetch,
                             pg_get_indexdef(idx.indexrelid) AS indexdef
                         FROM pg_stat_user_indexes idx
-                        WHERE idx.indexname ILIKE '%embedding%'
+                        WHERE idx.indexrelname ILIKE '%embedding%'
                         """
                     )
 

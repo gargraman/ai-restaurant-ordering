@@ -107,18 +107,12 @@ class DatabaseMetricsCollector:
         """Internal method to collect metrics periodically."""
         while self._running:
             try:
-                # Get pool stats
-                stats = self._pool.get_stats()
-
-                connections_used = getattr(stats, "acquired", None)
-                max_size = getattr(stats, "max_size", None)
-
-                if connections_used is None or max_size is None:
-                    # Fallback for dict-like stats (older asyncpg versions)
-                    connections_used = stats.get("acquired") or stats.get("connections") or 0
-                    max_size = stats.get("max_size") or stats.get("total") or 0
-
-                connections_available = max(max_size - connections_used, 0)
+                # Get pool stats using asyncpg Pool attributes
+                # asyncpg Pool doesn't have get_stats() - use direct attributes
+                pool_size = self._pool.get_size()
+                free_size = self._pool.get_idle_size()
+                connections_used = pool_size - free_size
+                connections_available = free_size
 
                 # Record connection metrics
                 record_database_metrics(
