@@ -75,12 +75,7 @@ class TestSendOrderToPosAsync:
             # Check that the logger was called with the expected arguments
             mock_logger.bind.assert_called()
             bound_logger = mock_logger.bind.return_value
-            bound_logger.error.assert_called_with(
-                "Order not found",
-                task_id="test-task-id",
-                order_id="00000000-0000-0000-0000-000000000000",
-                retry_count=0
-            )
+            bound_logger.error.assert_called_with("Order not found")
 
     @patch('src.tasks.order_tasks.AsyncSessionLocal')
     async def test_order_wrong_status(self, mock_async_session):
@@ -113,9 +108,6 @@ class TestSendOrderToPosAsync:
             bound_logger.warning.assert_called_with(
                 "Order not in PAID status, skipping",
                 current_status="created",
-                task_id="test-task-id",
-                order_id="00000000-0000-0000-0000-000000000000",
-                retry_count=0
             )
 
     @patch('src.tasks.order_tasks.AsyncSessionLocal')
@@ -150,12 +142,7 @@ class TestSendOrderToPosAsync:
             # Check that the logger was called with the expected arguments
             mock_logger.bind.assert_called()
             bound_logger = mock_logger.bind.return_value
-            bound_logger.error.assert_called_with(
-                "Restaurant has no POS connection",
-                task_id="test-task-id",
-                order_id="00000000-0000-0000-0000-000000000000",
-                retry_count=0
-            )
+            bound_logger.error.assert_called_with("Restaurant has no POS connection")
 
     @patch('src.tasks.order_tasks.AsyncSessionLocal')
     async def test_pos_connection_not_ready(self, mock_async_session):
@@ -196,9 +183,6 @@ class TestSendOrderToPosAsync:
             bound_logger.error.assert_called_with(
                 "POS connection not ready",
                 status="disconnected",
-                task_id="test-task-id",
-                order_id="00000000-0000-0000-0000-000000000000",
-                retry_count=0
             )
 
     @patch('src.tasks.order_tasks.AsyncSessionLocal')
@@ -244,9 +228,6 @@ class TestSendOrderToPosAsync:
             bound_logger.error.assert_called_with(
                 "Failed to get POS adapter",
                 error="Adapter init failed",
-                task_id="test-task-id",
-                order_id="00000000-0000-0000-0000-000000000000",
-                retry_count=0
             )
 
 
@@ -335,28 +316,28 @@ class TestHandleDLQ:
         # Mock order with a status that can transition to FAILED
         mock_order = MagicMock()
         mock_order.id = "order-123"
-        mock_order.status = MagicMock()
-        mock_order.status.value = "sent_to_pos"  # This status can transition to FAILED
-        mock_order.status.name = "SENT_TO_POS"
+        mock_order.order_number = "ORD-123"
         
         # Mock result with scalar_one_or_none returning the order
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_order
-        
+
         # Mock database session
         mock_db = AsyncMock()
         mock_db.execute.return_value = mock_result
-        
+
         with patch('src.tasks.dlq.process_dlq_order') as mock_process_task, \
-             patch('src.orders.state_machine.OrderStateMachine') as mock_state_machine_class:
-            
+             patch('src.tasks.order_tasks.OrderStateMachine') as mock_state_machine_class:
+
             # Mock the state machine instance
             mock_state_machine = MagicMock()
             mock_state_machine.mark_failed = AsyncMock()
             mock_state_machine_class.return_value = mock_state_machine
-            
+
             mock_async_session.return_value.__aenter__.return_value = mock_db
-            
+
             await _handle_dlq(mock_db, "order-123", "Test reason")
-            
+
             mock_process_task.delay.assert_called_once_with("order-123", "Test reason")
+            mock_state_machine_class.assert_called_once_with(mock_order)
+            mock_state_machine.mark_failed.assert_called_once()
