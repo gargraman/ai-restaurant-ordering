@@ -5,6 +5,15 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 /**
+ * Returns Authorization header with stored JWT token, if available.
+ */
+const getAuthHeaders = () => {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/**
  * Perform a chat search
  * @param {string} sessionId - Unique session identifier
  * @param {string} userInput - User's query
@@ -99,13 +108,12 @@ export const submitFeedback = async (sessionId, docId, rating, comment = null) =
  * @returns {Promise<Object>} Cart response
  */
 export const addToCart = async (sessionId, item) => {
-  const response = await fetch(`${API_BASE_URL}/orders/cart/items`, {
+  const response = await fetch(`${API_BASE_URL}/orders/cart/items?session_id=${encodeURIComponent(sessionId)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      session_id: sessionId,
       menu_item_id: item.menu_item_id,
       name: item.name,
       unit_price_cents: Math.round((item.price || 0) * 100), // Convert to cents
@@ -149,13 +157,12 @@ export const getCart = async (sessionId) => {
  * @returns {Promise<Object>} Updated cart
  */
 export const updateCartItem = async (sessionId, itemId, quantity) => {
-  const response = await fetch(`${API_BASE_URL}/orders/cart/items/${itemId}`, {
+  const response = await fetch(`${API_BASE_URL}/orders/cart/items/${itemId}?session_id=${encodeURIComponent(sessionId)}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      session_id: sessionId,
       quantity: quantity
     })
   });
@@ -175,14 +182,8 @@ export const updateCartItem = async (sessionId, itemId, quantity) => {
  * @returns {Promise<Object>} Updated cart
  */
 export const removeFromCart = async (sessionId, itemId) => {
-  const response = await fetch(`${API_BASE_URL}/orders/cart/items/${itemId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      session_id: sessionId
-    })
+  const response = await fetch(`${API_BASE_URL}/orders/cart/items/${itemId}?session_id=${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE'
   });
 
   if (!response.ok) {
@@ -199,19 +200,16 @@ export const removeFromCart = async (sessionId, itemId) => {
  * @returns {Promise<Object>} Response
  */
 export const clearCart = async (sessionId) => {
-  const response = await fetch(`${API_BASE_URL}/orders/cart?session_id=${sessionId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    }
+  const response = await fetch(`${API_BASE_URL}/orders/cart?session_id=${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE'
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  // 204 No Content — no body to parse
 };
 
 /**
@@ -274,6 +272,67 @@ export const getOrderDetails = async (orderNumber, customerEmail) => {
 };
 
 /**
+ * Login user and return tokens
+ * @param {string} email - User email
+ * @param {string} password - User password
+ * @returns {Promise<Object>} Token response {access_token, refresh_token, token_type, expires_in}
+ */
+export const loginUser = async (email, password) => {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Get current authenticated user profile
+ * @returns {Promise<Object>} User profile
+ */
+export const getCurrentUser = async () => {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Logout current user
+ * @returns {Promise<void>}
+ */
+export const logoutUser = async () => {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
+  // 204 No Content on success; ignore body
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+};
+
+/**
  * Create a new restaurant (admin endpoint)
  * @param {Object} restaurantData - Restaurant information
  * @returns {Promise<Object>} Created restaurant
@@ -283,6 +342,7 @@ export const createRestaurant = async (restaurantData) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(restaurantData)
   });
@@ -296,18 +356,23 @@ export const createRestaurant = async (restaurantData) => {
 };
 
 /**
- * Connect Stripe account to restaurant
+ * Initiate Stripe Connect onboarding for a restaurant
  * @param {string} restaurantId - Restaurant ID
- * @param {string} code - Stripe authorization code
- * @returns {Promise<Object>} Connection status
+ * @param {Object} connectData - {email, refresh_url, return_url}
+ * @returns {Promise<Object>} {account_id, onboarding_url, expires_at}
  */
-export const connectStripe = async (restaurantId, code) => {
+export const connectStripe = async (restaurantId, connectData) => {
   const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/stripe/connect`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     },
-    body: JSON.stringify({ code })
+    body: JSON.stringify({
+      email: connectData.email,
+      refresh_url: connectData.refresh_url,
+      return_url: connectData.return_url,
+    })
   });
 
   if (!response.ok) {
@@ -328,6 +393,7 @@ export const getStripeStatus = async (restaurantId) => {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     }
   });
 
@@ -350,6 +416,7 @@ export const connectPos = async (restaurantId, posData) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(posData)
   });
@@ -372,6 +439,7 @@ export const getPosStatus = async (restaurantId) => {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     }
   });
 
