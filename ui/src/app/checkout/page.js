@@ -35,6 +35,7 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
+  const [stripeElements, setStripeElements] = useState(null);
   const [paymentElement, setPaymentElement] = useState(null);
   const [stripe, setStripe] = useState(null);
 
@@ -114,39 +115,37 @@ export default function CheckoutPage() {
 
   // Initialize Payment Element after getting client secret
   useEffect(() => {
-    if (clientSecret && stripe) {
-      const elements = stripe.elements({ clientSecret });
+    if (!clientSecret || !stripe) return;
 
-      // Create Payment Element
-      const paymentElementOptions = {
-        layout: "tabs",
-        wallets: {
-          applePay: "never",
-          googlePay: "never",
-        }
-      };
+    const elements = stripe.elements({ clientSecret });
+    setStripeElements(elements);
 
-      const paymentElem = elements.create("payment", paymentElementOptions);
-      paymentElem.mount("#payment-element");
-      setPaymentElement(paymentElem);
-    }
+    const paymentElementOptions = {
+      layout: "tabs",
+      wallets: {
+        applePay: "never",
+        googlePay: "never",
+      }
+    };
+
+    const paymentElem = elements.create("payment", paymentElementOptions);
+    paymentElem.mount("#payment-element");
+    setPaymentElement(paymentElem);
 
     return () => {
-      if (paymentElement) {
-        paymentElement.destroy();
-      }
+      paymentElem.destroy();
     };
   }, [clientSecret, stripe]);
 
   const handlePlaceOrder = async () => {
-    if (!stripe || !clientSecret) return;
+    if (!stripe || !stripeElements) return;
 
     setIsProcessing(true);
 
     try {
-      // Confirm the payment
+      // Confirm the payment using the same elements instance that mounted the PaymentElement
       const { error } = await stripe.confirmPayment({
-        elements: stripe.elements({ clientSecret }),
+        elements: stripeElements,
         confirmParams: {
           return_url: `${window.location.origin}/checkout`,
         },
@@ -416,7 +415,7 @@ export default function CheckoutPage() {
                 </button>
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={isProcessing || !stripe}
+                  disabled={isProcessing || !stripeElements}
                   className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-6 rounded-lg disabled:opacity-50"
                 >
                   {isProcessing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
