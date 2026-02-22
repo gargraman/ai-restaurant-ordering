@@ -35,6 +35,8 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
+  const [confirmedItems, setConfirmedItems] = useState([]);
+  const [confirmedTotal, setConfirmedTotal] = useState(0);
   const [stripeElements, setStripeElements] = useState(null);
   const [paymentElement, setPaymentElement] = useState(null);
   const [stripe, setStripe] = useState(null);
@@ -157,8 +159,10 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Payment succeeded - move to confirmation
+      // Payment succeeded - capture snapshot before clearing cart
       setOrderId(localStorage.getItem('currentOrderId'));
+      setConfirmedItems([...items]);
+      setConfirmedTotal(total);
       clearCart();
       setStep(3);
     } catch (error) {
@@ -181,7 +185,7 @@ export default function CheckoutPage() {
     router.push('/'); // Return to home page
   };
 
-  if (items.length === 0) {
+  if (items.length === 0 && step !== 3) {
     return (
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="max-w-3xl mx-auto px-4">
@@ -441,7 +445,7 @@ export default function CheckoutPage() {
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
                 <h3 className="font-medium text-gray-800 mb-2">Order Summary</h3>
                 <div className="space-y-2">
-                  {items.map((item, index) => (
+                  {confirmedItems.map((item, index) => (
                     <div key={index} className="flex justify-between text-sm">
                       <span>{item.quantity}x {item.name}</span>
                       <span>${(item.price * item.quantity).toFixed(2)}</span>
@@ -450,7 +454,7 @@ export default function CheckoutPage() {
                   <div className="border-t border-gray-200 pt-2 mt-2">
                     <div className="flex justify-between font-medium">
                       <span>Total</span>
-                      <span>${total.toFixed(2)}</span>
+                      <span>${confirmedTotal.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -482,26 +486,28 @@ export default function CheckoutPage() {
         </div>
 
         {/* Order Summary Sidebar */}
-        <div className="mt-6 bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-medium text-gray-800 mb-4">Order Summary</h3>
-          <div className="space-y-4">
-            {items.map((item, index) => (
-              <div key={index} className="flex justify-between items-center border-b pb-3 last:border-0 last:pb-0">
-                <div>
-                  <p className="font-medium text-gray-800">{item.name}</p>
-                  <p className="text-sm text-gray-600">{item.restaurant_name}</p>
+        {step !== 3 && (
+          <div className="mt-6 bg-white rounded-lg shadow-md p-6">
+            <h3 className="text-lg font-medium text-gray-800 mb-4">Order Summary</h3>
+            <div className="space-y-4">
+              {items.map((item, index) => (
+                <div key={index} className="flex justify-between items-center border-b pb-3 last:border-0 last:pb-0">
+                  <div>
+                    <p className="font-medium text-gray-800">{item.name}</p>
+                    <p className="text-sm text-gray-600">{item.restaurant_name}</p>
+                  </div>
+                  <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
                 </div>
-                <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
+              ))}
+            </div>
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total</span>
+                <span>${total.toFixed(2)}</span>
               </div>
-            ))}
-          </div>
-          <div className="border-t border-gray-200 pt-4 mt-4">
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total</span>
-              <span>${total.toFixed(2)}</span>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

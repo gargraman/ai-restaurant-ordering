@@ -10,15 +10,12 @@ from src.db.models.restaurant import Restaurant
 from src.db.models.order import Order, OrderStatus, FulfillmentType
 from src.db.models.payment import PaymentIntent, PaymentStatus
 from src.auth.password import hash_password
+from src.auth.jwt import get_jwt_service
+from src.auth.models import UserRole as AuthUserRole
 from datetime import datetime, timezone
 from uuid import uuid4
 import json
 
-
-@pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
 
 
 @pytest.mark.asyncio
@@ -27,12 +24,12 @@ async def test_get_cart_success(client, db_session):
     # Arrange
     tenant_id = str(uuid4())
     session_id = str(uuid4())
-    
+
     # Mock the cart manager
     with patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Create a mock cart
         mock_cart = MagicMock()
         mock_cart.session_id = session_id
@@ -41,7 +38,7 @@ async def test_get_cart_success(client, db_session):
         mock_cart.items = []
         mock_cart.item_count = 0
         mock_cart.subtotal_cents = 0
-        
+
         mock_cart_manager.get_cart.return_value = mock_cart
 
         # Act
@@ -65,18 +62,18 @@ async def test_add_to_cart_success(client, db_session):
     tenant_id = str(uuid4())
     session_id = str(uuid4())
     restaurant_id = str(uuid4())
-    
+
     # Mock the cart manager
     with patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Create a mock cart with an item
         mock_cart = MagicMock()
         mock_cart.session_id = session_id
         mock_cart.restaurant_id = restaurant_id
         mock_cart.restaurant_name = "Test Restaurant"
-        
+
         # Create a mock cart item
         mock_item = MagicMock()
         mock_item.id = str(uuid4())
@@ -87,11 +84,11 @@ async def test_add_to_cart_success(client, db_session):
         mock_item.total_cents = 1000
         mock_item.modifiers = []
         mock_item.special_instructions = None
-        
+
         mock_cart.items = [mock_item]
         mock_cart.item_count = 1
         mock_cart.subtotal_cents = 1000
-        
+
         mock_cart_manager.add_item.return_value = mock_cart
 
         add_item_data = {
@@ -104,7 +101,7 @@ async def test_add_to_cart_success(client, db_session):
         }
 
         # Act
-        response = client.post(f"/orders/cart/items?session_id={session_id}&tenant_id={tenant_id}", 
+        response = client.post(f"/orders/cart/items?session_id={session_id}&tenant_id={tenant_id}",
                               json=add_item_data)
 
         # Assert
@@ -126,18 +123,18 @@ async def test_update_cart_item_success(client, db_session):
     session_id = str(uuid4())
     item_id = str(uuid4())
     restaurant_id = str(uuid4())
-    
+
     # Mock the cart manager
     with patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Create a mock cart with updated item
         mock_cart = MagicMock()
         mock_cart.session_id = session_id
         mock_cart.restaurant_id = restaurant_id
         mock_cart.restaurant_name = "Test Restaurant"
-        
+
         # Create a mock cart item with updated quantity
         mock_item = MagicMock()
         mock_item.id = item_id
@@ -148,11 +145,11 @@ async def test_update_cart_item_success(client, db_session):
         mock_item.total_cents = 3000
         mock_item.modifiers = []
         mock_item.special_instructions = None
-        
+
         mock_cart.items = [mock_item]
         mock_cart.item_count = 3
         mock_cart.subtotal_cents = 3000
-        
+
         mock_cart_manager.update_item_quantity.return_value = mock_cart
 
         update_data = {
@@ -179,12 +176,12 @@ async def test_remove_cart_item_success(client, db_session):
     session_id = str(uuid4())
     item_id = str(uuid4())
     restaurant_id = str(uuid4())
-    
+
     # Mock the cart manager
     with patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Create a mock cart with item removed
         mock_cart = MagicMock()
         mock_cart.session_id = session_id
@@ -193,7 +190,7 @@ async def test_remove_cart_item_success(client, db_session):
         mock_cart.items = []  # Item has been removed
         mock_cart.item_count = 0
         mock_cart.subtotal_cents = 0
-        
+
         mock_cart_manager.remove_item.return_value = mock_cart
 
         # Act
@@ -213,12 +210,12 @@ async def test_clear_cart_success(client, db_session):
     # Arrange
     tenant_id = str(uuid4())
     session_id = str(uuid4())
-    
+
     # Mock the cart manager
     with patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         mock_cart_manager.clear_cart.return_value = None  # Clear doesn't return anything
 
         # Act
@@ -234,7 +231,8 @@ async def test_create_order_success(client, db_session):
     # Arrange
     tenant_id = str(uuid4())
     session_id = str(uuid4())
-    
+    user_id = str(uuid4())
+
     # Create a user in the database
     password_hash = hash_password("SecurePassword123!")
     user = User(
@@ -247,21 +245,31 @@ async def test_create_order_success(client, db_session):
     )
     db_session.add(user)
     await db_session.commit()
-    
+
+    # Generate real JWT token using the test JWT service
+    jwt_service = get_jwt_service()
+    access_token, _, _ = jwt_service.create_token_pair(
+        user_id=user_id,
+        email="customer@example.com",
+        role=AuthUserRole.CUSTOMER,
+        tenant_id=tenant_id,
+    )
+    headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
+
     # Mock the order service and cart manager
     with patch('src.api.routers.orders.OrderService') as mock_order_service_class, \
          patch('src.api.routers.orders.CartManager') as mock_cart_manager_class, \
          patch('src.api.routers.orders.StripeClient') as mock_stripe_client_class:
-        
+
         mock_order_service = AsyncMock()
         mock_order_service_class.return_value = mock_order_service
-        
+
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         mock_stripe_client = AsyncMock()
         mock_stripe_client_class.return_value = mock_stripe_client
-        
+
         # Create mock order
         mock_order = MagicMock()
         mock_order.id = str(uuid4())
@@ -280,7 +288,7 @@ async def test_create_order_success(client, db_session):
         mock_order.payment_intent = None
         mock_order.created_at = datetime.now(timezone.utc)
         mock_order.updated_at = datetime.now(timezone.utc)
-        
+
         # Create mock payment intent
         mock_payment_intent = MagicMock()
         mock_payment_intent.id = str(uuid4())
@@ -288,7 +296,7 @@ async def test_create_order_success(client, db_session):
         mock_payment_intent.status = PaymentStatus.REQUIRES_PAYMENT_METHOD
         mock_payment_intent.amount_cents = 1850
         mock_payment_intent.client_secret = f"pi_{uuid4().hex}_secret"
-        
+
         # Configure mocks
         mock_order_service.create_order_from_cart.return_value = mock_order
         mock_order_service.create_payment_intent.return_value = mock_payment_intent
@@ -302,34 +310,20 @@ async def test_create_order_success(client, db_session):
             "tip_cents": 200
         }
 
-        # Mock JWT service to return a valid user
-        with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
-            mock_jwt_service = AsyncMock()
-            mock_jwt_service_class.return_value = mock_jwt_service
-            
-            mock_jwt_service.verify_token.return_value = {
-                "user_id": str(user.id),
-                "email": user.email,
-                "role": "CUSTOMER",
-                "tenant_id": tenant_id,
-                "restaurant_id": None
-            }
+        # Act
+        response = client.post(f"/orders?session_id={session_id}",
+                              json=create_order_data,
+                              headers=headers)
 
-            # Act
-            headers = {"Authorization": "Bearer fake_token", "X-Tenant-ID": tenant_id}
-            response = client.post(f"/orders?session_id={session_id}", 
-                                  json=create_order_data, 
-                                  headers=headers)
-
-            # Assert
-            assert response.status_code == 201
-            data = response.json()
-            assert data["id"] == str(mock_order.id)
-            assert data["order_number"] == mock_order.order_number
-            assert data["status"] == "CREATED"
-            assert data["customer_name"] == "John Doe"
-            assert data["subtotal_cents"] == 1500
-            assert data["total_cents"] == 1850
+        # Assert
+        assert response.status_code == 201
+        data = response.json()
+        assert data["id"] == str(mock_order.id)
+        assert data["order_number"] == mock_order.order_number
+        assert data["status"] == "created"
+        assert data["customer_name"] == "John Doe"
+        assert data["subtotal_cents"] == 1500
+        assert data["total_cents"] == 1850
 
 
 @pytest.mark.asyncio
@@ -338,23 +332,22 @@ async def test_get_order_success(client, db_session):
     # Arrange
     tenant_id = str(uuid4())
     order_id = str(uuid4())
-    
-    # Create a user in the database
-    password_hash = hash_password("SecurePassword123!")
-    user = User(
+    user_id = str(uuid4())
+
+    # Generate real JWT token using the test JWT service
+    jwt_service = get_jwt_service()
+    access_token, _, _ = jwt_service.create_token_pair(
+        user_id=user_id,
         email="customer@example.com",
-        password_hash=password_hash,
+        role=AuthUserRole.CUSTOMER,
         tenant_id=tenant_id,
-        role=DBUserRole.CUSTOMER,
-        is_active=True,
-        is_verified=False
     )
-    db_session.add(user)
-    await db_session.commit()
-    
+    headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
+
     # Create a restaurant
+    restaurant_id = str(uuid4())
     restaurant = Restaurant(
-        id=uuid4(),
+        id=restaurant_id,
         tenant_id=tenant_id,
         name="Test Restaurant",
         slug="test-restaurant",
@@ -362,64 +355,51 @@ async def test_get_order_success(client, db_session):
     )
     db_session.add(restaurant)
     await db_session.commit()
-    
-    # Create an order
-    order = Order(
-        id=uuid4(),
-        order_number=f"ORD-{uuid4().hex[:8].upper()}",
-        status=OrderStatus.CREATED,
-        restaurant_id=restaurant.id,
-        customer_id=user.id,
-        customer_name="John Doe",
-        customer_email="customer@example.com",
-        fulfillment_type=FulfillmentType.PICKUP,
-        subtotal_cents=1500,
-        tax_cents=150,
-        tip_cents=200,
-        delivery_fee_cents=0,
-        total_cents=1850
-    )
-    db_session.add(order)
-    await db_session.commit()
-    
+
+    # Create a mock order to return from the service
+    mock_order = MagicMock()
+    mock_order.id = order_id
+    mock_order.order_number = f"ORD-{uuid4().hex[:8].upper()}"
+    mock_order.status = OrderStatus.CREATED
+    mock_order.restaurant_id = restaurant_id
+    mock_order.customer_id = user_id
+    mock_order.customer_name = "John Doe"
+    mock_order.customer_email = "customer@example.com"
+    mock_order.fulfillment_type = FulfillmentType.PICKUP
+    mock_order.subtotal_cents = 1500
+    mock_order.tax_cents = 150
+    mock_order.tip_cents = 200
+    mock_order.delivery_fee_cents = 0
+    mock_order.total_cents = 1850
+    mock_order.items = []
+    mock_order.payment_intent = None
+    mock_order.created_at = datetime.now(timezone.utc)
+    mock_order.updated_at = datetime.now(timezone.utc)
+
     # Mock the order service
     with patch('src.api.routers.orders.OrderService') as mock_order_service_class, \
          patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
-        
+
         mock_order_service = AsyncMock()
         mock_order_service_class.return_value = mock_order_service
-        
+
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Configure mock to return the order
-        mock_order_service.get_order.return_value = order
+        mock_order_service.get_order.return_value = mock_order
 
-        # Mock JWT service to return a valid user
-        with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
-            mock_jwt_service = AsyncMock()
-            mock_jwt_service_class.return_value = mock_jwt_service
-            
-            mock_jwt_service.verify_token.return_value = {
-                "user_id": str(user.id),
-                "email": user.email,
-                "role": "CUSTOMER",
-                "tenant_id": tenant_id,
-                "restaurant_id": None
-            }
+        # Act
+        response = client.get(f"/orders/{order_id}", headers=headers)
 
-            # Act
-            headers = {"Authorization": "Bearer fake_token", "X-Tenant-ID": tenant_id}
-            response = client.get(f"/orders/{order_id}", headers=headers)
-
-            # Assert
-            assert response.status_code == 200
-            data = response.json()
-            assert data["id"] == str(order.id)
-            assert data["order_number"] == order.order_number
-            assert data["status"] == "CREATED"
-            assert data["customer_name"] == "John Doe"
-            assert data["total_cents"] == 1850
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(mock_order.id)
+        assert data["order_number"] == mock_order.order_number
+        assert data["status"] == "created"
+        assert data["customer_name"] == "John Doe"
+        assert data["total_cents"] == 1850
 
 
 @pytest.mark.asyncio
@@ -427,88 +407,62 @@ async def test_list_orders_success(client, db_session):
     """Test listing orders for a tenant."""
     # Arrange
     tenant_id = str(uuid4())
-    
-    # Create a user in the database
-    password_hash = hash_password("SecurePassword123!")
-    user = User(
+    user_id = str(uuid4())
+
+    # Generate real JWT token using the test JWT service
+    jwt_service = get_jwt_service()
+    access_token, _, _ = jwt_service.create_token_pair(
+        user_id=user_id,
         email="customer@example.com",
-        password_hash=password_hash,
+        role=AuthUserRole.CUSTOMER,
         tenant_id=tenant_id,
-        role=DBUserRole.CUSTOMER,
-        is_active=True,
-        is_verified=False
     )
-    db_session.add(user)
-    await db_session.commit()
-    
-    # Create a restaurant
-    restaurant = Restaurant(
-        id=uuid4(),
-        tenant_id=tenant_id,
-        name="Test Restaurant",
-        slug="test-restaurant",
-        is_active=True
-    )
-    db_session.add(restaurant)
-    await db_session.commit()
-    
-    # Create an order
-    order = Order(
-        id=uuid4(),
-        order_number=f"ORD-{uuid4().hex[:8].upper()}",
-        status=OrderStatus.CREATED,
-        restaurant_id=restaurant.id,
-        customer_id=user.id,
-        customer_name="John Doe",
-        customer_email="customer@example.com",
-        fulfillment_type=FulfillmentType.PICKUP,
-        subtotal_cents=1500,
-        tax_cents=150,
-        tip_cents=200,
-        delivery_fee_cents=0,
-        total_cents=1850,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
-    )
-    db_session.add(order)
-    await db_session.commit()
-    
+    headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
+
+    # Create a mock order to return from the service
+    restaurant_id = str(uuid4())
+    order_id = str(uuid4())
+    mock_order = MagicMock()
+    mock_order.id = order_id
+    mock_order.order_number = f"ORD-{uuid4().hex[:8].upper()}"
+    mock_order.status = OrderStatus.CREATED
+    mock_order.restaurant_id = restaurant_id
+    mock_order.customer_id = user_id
+    mock_order.customer_name = "John Doe"
+    mock_order.customer_email = "customer@example.com"
+    mock_order.fulfillment_type = FulfillmentType.PICKUP
+    mock_order.subtotal_cents = 1500
+    mock_order.tax_cents = 150
+    mock_order.tip_cents = 200
+    mock_order.delivery_fee_cents = 0
+    mock_order.total_cents = 1850
+    mock_order.items = []
+    mock_order.payment_intent = None
+    mock_order.created_at = datetime.now(timezone.utc)
+    mock_order.updated_at = datetime.now(timezone.utc)
+
     # Mock the order service
     with patch('src.api.routers.orders.OrderService') as mock_order_service_class, \
          patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
-        
+
         mock_order_service = AsyncMock()
         mock_order_service_class.return_value = mock_order_service
-        
+
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
-        # Configure mock to return the order
-        mock_order_service.list_orders.return_value = [order]
 
-        # Mock JWT service to return a valid user
-        with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
-            mock_jwt_service = AsyncMock()
-            mock_jwt_service_class.return_value = mock_jwt_service
-            
-            mock_jwt_service.verify_token.return_value = {
-                "user_id": str(user.id),
-                "email": user.email,
-                "role": "CUSTOMER",
-                "tenant_id": tenant_id,
-                "restaurant_id": None
-            }
+        # Configure mock to return the order list
+        mock_order_service.list_orders.return_value = [mock_order]
 
-            # Act
-            headers = {"Authorization": "Bearer fake_token", "X-Tenant-ID": tenant_id}
-            response = client.get("/orders", headers=headers)
+        # Act
+        response = client.get("/orders", headers=headers)
 
-            # Assert
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 1
-            assert data[0]["id"] == str(order.id)
-            assert data[0]["order_number"] == order.order_number
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == str(mock_order.id)
+        assert data[0]["order_number"] == mock_order.order_number
 
 
 @pytest.mark.asyncio
@@ -517,86 +471,57 @@ async def test_cancel_order_success(client, db_session):
     # Arrange
     tenant_id = str(uuid4())
     order_id = str(uuid4())
-    
-    # Create a user in the database
-    password_hash = hash_password("SecurePassword123!")
-    user = User(
+    user_id = str(uuid4())
+
+    # Generate real JWT token using the test JWT service
+    jwt_service = get_jwt_service()
+    access_token, _, _ = jwt_service.create_token_pair(
+        user_id=user_id,
         email="customer@example.com",
-        password_hash=password_hash,
+        role=AuthUserRole.CUSTOMER,
         tenant_id=tenant_id,
-        role=DBUserRole.CUSTOMER,
-        is_active=True,
-        is_verified=False
     )
-    db_session.add(user)
-    await db_session.commit()
-    
-    # Create a restaurant
-    restaurant = Restaurant(
-        id=uuid4(),
-        tenant_id=tenant_id,
-        name="Test Restaurant",
-        slug="test-restaurant",
-        is_active=True
-    )
-    db_session.add(restaurant)
-    await db_session.commit()
-    
-    # Create an order
-    order = Order(
-        id=uuid4(),
-        order_number=f"ORD-{uuid4().hex[:8].upper()}",
-        status=OrderStatus.CREATED,
-        restaurant_id=restaurant.id,
-        customer_id=user.id,
-        customer_name="John Doe",
-        customer_email="customer@example.com",
-        fulfillment_type=FulfillmentType.PICKUP,
-        subtotal_cents=1500,
-        tax_cents=150,
-        tip_cents=200,
-        delivery_fee_cents=0,
-        total_cents=1850,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
-    )
-    db_session.add(order)
-    await db_session.commit()
-    
+    headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
+
+    # Create a mock canceled order to return from the service
+    restaurant_id = str(uuid4())
+    mock_order = MagicMock()
+    mock_order.id = order_id
+    mock_order.order_number = f"ORD-{uuid4().hex[:8].upper()}"
+    mock_order.status = OrderStatus.CANCELED
+    mock_order.restaurant_id = restaurant_id
+    mock_order.customer_id = user_id
+    mock_order.customer_name = "John Doe"
+    mock_order.customer_email = "customer@example.com"
+    mock_order.fulfillment_type = FulfillmentType.PICKUP
+    mock_order.subtotal_cents = 1500
+    mock_order.tax_cents = 150
+    mock_order.tip_cents = 200
+    mock_order.delivery_fee_cents = 0
+    mock_order.total_cents = 1850
+    mock_order.items = []
+    mock_order.payment_intent = None
+    mock_order.created_at = datetime.now(timezone.utc)
+    mock_order.updated_at = datetime.now(timezone.utc)
+
     # Mock the order service
     with patch('src.api.routers.orders.OrderService') as mock_order_service_class, \
          patch('src.api.routers.orders.CartManager') as mock_cart_manager_class:
-        
+
         mock_order_service = AsyncMock()
         mock_order_service_class.return_value = mock_order_service
-        
+
         mock_cart_manager = AsyncMock()
         mock_cart_manager_class.return_value = mock_cart_manager
-        
+
         # Configure mock to return the canceled order
-        canceled_order = order
-        canceled_order.status = OrderStatus.CANCELED
-        mock_order_service.cancel_order.return_value = canceled_order
+        mock_order_service.cancel_order.return_value = mock_order
 
-        # Mock JWT service to return a valid user
-        with patch('src.auth.dependencies.JWTService') as mock_jwt_service_class:
-            mock_jwt_service = AsyncMock()
-            mock_jwt_service_class.return_value = mock_jwt_service
-            
-            mock_jwt_service.verify_token.return_value = {
-                "user_id": str(user.id),
-                "email": user.email,
-                "role": "CUSTOMER",
-                "tenant_id": tenant_id,
-                "restaurant_id": None
-            }
+        # Act
+        response = client.post(f"/orders/{order_id}/cancel", headers=headers)
 
-            # Act
-            headers = {"Authorization": "Bearer fake_token", "X-Tenant-ID": tenant_id}
-            response = client.post(f"/orders/{order_id}/cancel", headers=headers)
-
-            # Assert
-            assert response.status_code == 200
-            data = response.json()
-            assert data["id"] == str(order.id)
-            assert data["status"] == "CANCELED"
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(mock_order.id)
+        assert data["status"] == "canceled"

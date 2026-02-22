@@ -169,11 +169,11 @@ def create_app() -> FastAPI:
         webhooks_router
     )
     
-    app.include_router(auth_router, prefix="/auth")
+    app.include_router(auth_router)
     app.include_router(orders_router)  # No prefix needed as routes in orders router already have /orders prefix
-    app.include_router(restaurants_router, prefix="/restaurants")
-    app.include_router(tenants_router, prefix="/tenants")
-    app.include_router(webhooks_router, prefix="/webhooks")
+    app.include_router(restaurants_router)  # prefix="/restaurants" already defined in router
+    app.include_router(tenants_router)  # prefix="/tenants" already defined in router
+    app.include_router(webhooks_router)  # prefix="/webhooks" already defined in router
 
     # Health check
     @app.get("/health")

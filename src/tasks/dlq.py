@@ -275,6 +275,7 @@ async def _notify_order_failure_async(
                     phone=order.customer_phone,
                     order_number=order.order_number,
                     is_permanent=is_permanent,
+                    error_message=error_message,
                 )
                 notifications_sent.append("customer_sms")
 
@@ -546,6 +547,7 @@ async def _send_customer_sms(
     phone: str,
     order_number: str,
     is_permanent: bool,
+    error_message: str = "",
 ) -> None:
     """Send SMS to customer about order failure.
 
@@ -553,6 +555,7 @@ async def _send_customer_sms(
         phone: Customer phone number
         order_number: Order number
         is_permanent: Whether failure is permanent
+        error_message: Error details
     """
     logger.info(
         "Sending customer SMS",

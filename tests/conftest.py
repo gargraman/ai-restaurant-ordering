@@ -3,7 +3,11 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
+from uuid import uuid4
 from jose import jwt
+
+# Import get_db for dependency override
+from src.db import get_db
 
 # Set test environment variables before importing application code
 os.environ["JWT_SECRET_KEY"] = "test_secret_key_32_chars_long_for_hs256"
@@ -47,11 +51,43 @@ def reset_jwt_service():
 def mock_db_session():
     """Create a mock database session for testing."""
     session = AsyncMock()
-    session.execute = AsyncMock()
+
+    # Mock execute to return async results
+    async def mock_execute(*args, **kwargs):
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_result.scalars = MagicMock()
+        mock_result.scalars.return_value = MagicMock()
+        mock_result.scalars.return_value.all = MagicMock(return_value=[])
+        mock_result.one_or_none = MagicMock(return_value=None)
+        mock_result.one = MagicMock(return_value=None)
+        mock_result.all = MagicMock(return_value=[])
+        mock_result.first = MagicMock(return_value=None)
+        return mock_result
+
+    def mock_add(obj):
+        """Simulate DB behavior by assigning IDs and timestamps on add."""
+        if hasattr(obj, 'id') and obj.id is None:
+            obj.id = str(uuid4())
+        if hasattr(obj, 'created_at') and obj.created_at is None:
+            obj.created_at = datetime.utcnow()
+        if hasattr(obj, 'updated_at') and obj.updated_at is None:
+            obj.updated_at = datetime.utcnow()
+
+    session.execute = mock_execute
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     session.close = AsyncMock()
+    session.flush = AsyncMock()
+    session.add = mock_add
+
     return session
+
+
+@pytest.fixture
+def db_session(mock_db_session):
+    """Alias for mock_db_session for compatibility with tests expecting db_session."""
+    return mock_db_session
 
 
 @pytest.fixture
@@ -128,9 +164,13 @@ def mock_redis():
     redis.hgetall = AsyncMock(return_value={})
     redis.hset = AsyncMock()
     redis.hdel = AsyncMock()
-    redis.json = MagicMock()
-    redis.json().get = AsyncMock(return_value=None)
-    redis.json().set = AsyncMock()
+    
+    # Mock Redis JSON commands
+    json_mock = MagicMock()
+    json_mock.get = AsyncMock(return_value=None)
+    json_mock.set = AsyncMock()
+    redis.json = MagicMock(return_value=json_mock)
+    
     return redis
 
 
@@ -186,6 +226,33 @@ def mock_pos_adapter():
 
 
 @pytest.fixture
+def make_auth_token():
+    """Factory fixture to create valid JWT tokens for testing authentication."""
+    def _make_token(
+        user_id: str = None,
+        email: str = "test@example.com",
+        role: str = "CUSTOMER",
+        tenant_id: str = None,
+        restaurant_id: str = None,
+    ):
+        from src.auth.jwt import get_jwt_service
+        from src.auth.models import UserRole
+        user_id = user_id or str(uuid4())
+        tenant_id = tenant_id or str(uuid4())
+        role_enum = UserRole(role.lower())
+        jwt_service = get_jwt_service()
+        access_token, refresh_token, expires_in = jwt_service.create_token_pair(
+            user_id=user_id,
+            email=email,
+            role=role_enum,
+            tenant_id=tenant_id,
+            restaurant_id=restaurant_id,
+        )
+        return access_token, refresh_token, expires_in, user_id, tenant_id
+    return _make_token
+
+
+@pytest.fixture
 def create_test_token():
     """Factory fixture to create JWT tokens with custom claims."""
     def _create_token(
@@ -203,3 +270,23 @@ def create_test_token():
         }
         return jwt.encode(data, secret_key, algorithm="HS256")
     return _create_token
+
+
+@pytest.fixture
+def client(mock_db_session):
+    """Create a test client for the FastAPI app with mocked dependencies."""
+    from fastapi.testclient import TestClient
+    from src.api.main import app
+
+    # Override the get_db dependency
+    async def override_get_db():
+        yield mock_db_session
+
+    app.dependency_overrides = {}
+    app.dependency_overrides[get_db] = override_get_db
+
+    test_client = TestClient(app)
+    yield test_client
+
+    # Clean up overrides
+    app.dependency_overrides.clear()

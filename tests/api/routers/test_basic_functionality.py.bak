@@ -51,9 +51,9 @@ def test_tenants_endpoints_exist(client):
 
 def test_webhooks_endpoints_exist(client):
     """Test that webhooks endpoints exist."""
-    # Test stripe webhook - will likely return 400 for missing signature or 404 if not configured
+    # Test stripe webhook - will likely return 400 for missing signature
     response = client.post("/webhooks/stripe", content="{}")
-    assert response.status_code in [400, 422, 404]  # 400 for missing signature, 404 if webhook not configured
+    assert response.status_code in [400, 422]  # Will be 400 for missing signature
 
 
 def test_api_routes_are_registered(client):

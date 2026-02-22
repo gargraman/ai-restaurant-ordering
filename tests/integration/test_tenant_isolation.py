@@ -159,12 +159,12 @@ class TestTenantAwareEndpoints:
         # Should require authentication
         assert response.status_code in [401, 404, 200]
 
-        # Try to register new user
+        # Try to register new user (400 expected: tenant_id is required for non-platform users)
         response = client.post("/auth/register", json={
             "email": "newuser@test.com",
             "password": "securepassword"
         })
-        assert response.status_code in [401, 422, 200]
+        assert response.status_code in [400, 401, 422, 200]
 
     def test_tenant_specific_order_operations(self, client):
         """Test order operations with tenant context."""

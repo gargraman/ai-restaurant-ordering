@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Package, Clock, CheckCircle, AlertCircle, Truck } from 'lucide-react';
 import { getOrderDetails } from '@/lib/api-client';
+
+const TERMINAL_STATUSES = new Set(['completed', 'canceled', 'failed', 'refunded']);
 
 export default function OrderTrackingPage() {
   const [orderNumber, setOrderNumber] = useState('');
@@ -10,7 +12,7 @@ export default function OrderTrackingPage() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pollingInterval, setPollingInterval] = useState(null);
+  const intervalRef = useRef(null);
 
   // Function to fetch order details
   const fetchOrderDetails = async (orderNum, email) => {
@@ -49,41 +51,37 @@ export default function OrderTrackingPage() {
 
   // Poll for order status updates when an order is being tracked
   useEffect(() => {
-    if (order && !order.status.endsWith('ed') && order.status !== 'canceled' && order.status !== 'failed' && order.status !== 'refunded') {
-      // Start polling if order is not in a terminal state
-      const interval = setInterval(async () => {
+    // Clear any existing interval before starting a new one
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (order && !TERMINAL_STATUSES.has(order.status)) {
+      const statusAtPollStart = order.status;
+
+      intervalRef.current = setInterval(async () => {
         if (orderNumber && customerEmail) {
           const updatedOrder = await fetchOrderDetails(orderNumber, customerEmail);
 
-          // If status changed, show a notification
-          if (updatedOrder && updatedOrder.status !== order.status) {
-            // Show status change notification
-            console.log(`Order status changed from ${order.status} to ${updatedOrder.status}`);
+          if (updatedOrder && updatedOrder.status !== statusAtPollStart) {
+            console.log(`Order status changed from ${statusAtPollStart} to ${updatedOrder.status}`);
 
-            // Optionally show a browser notification if supported
             if ('Notification' in window && Notification.permission === 'granted') {
               new Notification('Order Status Updated', {
-                body: `Your order status changed from ${order.status.replace('_', ' ')} to ${updatedOrder.status.replace('_', ' ')}`,
+                body: `Your order status changed from ${statusAtPollStart.replace('_', ' ')} to ${updatedOrder.status.replace('_', ' ')}`,
                 icon: '/favicon.ico'
               });
             }
           }
         }
       }, 30000); // Poll every 30 seconds
-
-      setPollingInterval(interval);
-    } else {
-      // Clear interval if order is in terminal state
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
     }
 
-    // Cleanup function
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
   }, [order, orderNumber, customerEmail]);

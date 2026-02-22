@@ -38,14 +38,22 @@ class TestPOSOrderTask:
 class TestSendOrderToPos:
     """Test cases for send_order_to_pos task."""
 
-    @pytest.mark.asyncio
     @patch('src.tasks.order_tasks._send_order_to_pos_async')
     def test_send_order_to_pos_calls_async_impl(self, mock_async_func):
         """Test that send_order_to_pos calls the async implementation."""
+        import asyncio
         mock_async_func.return_value = {"status": "success"}
-        
-        result = send_order_to_pos("test-order-id")
-        
+
+        # Ensure a fresh event loop exists since sync Celery tasks use
+        # asyncio.get_event_loop().run_until_complete() internally
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = send_order_to_pos("test-order-id")
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
         assert result == {"status": "success"}
         mock_async_func.assert_called_once_with(send_order_to_pos, "test-order-id")
 
@@ -60,18 +68,22 @@ class TestSendOrderToPosAsync:
         mock_task = MagicMock()
         mock_task.request.id = "test-task-id"
         mock_task.request.retries = 0
-        
-        # Mock the database session
+
+        # Mock the database session using explicit mock_result to ensure
+        # scalar_one_or_none() returns None (not a coroutine from AsyncMock chain)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+
         mock_db = AsyncMock()
-        mock_db.execute.return_value.scalar_one_or_none.return_value = None
-        
+        mock_db.execute.return_value = mock_result
+
         # Configure the mock session
         mock_async_session.return_value.__aenter__.return_value = mock_db
-        
+
         with patch('src.tasks.order_tasks.logger') as mock_logger:
             with pytest.raises(Reject):
                 await _send_order_to_pos_async(mock_task, "00000000-0000-0000-0000-000000000000")  # Valid UUID
-                
+
             # Check that the logger was called with the expected arguments
             mock_logger.bind.assert_called()
             bound_logger = mock_logger.bind.return_value

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState } from 'react';
 import { getCart, addToCart, updateCartItem, removeFromCart, clearCart as clearCartApi } from '@/lib/api-client';
 import { mockGetCart, mockAddToCart, mockUpdateCartItem, mockRemoveFromCart, mockClearCart } from '@/lib/mock-cart-api';
 
@@ -166,7 +166,12 @@ const cartReducer = (state, action) => {
 // Provider component
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
-  const sessionId = typeof window !== 'undefined' ? localStorage.getItem('chatSessionId') || '' : '';
+  const [sessionId, setSessionId] = useState('');
+
+  // Read sessionId from localStorage client-side only
+  useEffect(() => {
+    setSessionId(localStorage.getItem('chatSessionId') || '');
+  }, []);
 
   // Load cart from API on mount
   useEffect(() => {
@@ -205,7 +210,7 @@ export const CartProvider = ({ children }) => {
       // Try to use mock API
       try {
         const mockCartData = await mockAddToCart(sessionId, item);
-        dispatch({ type: 'SET_CART', payload: mockCartData });
+        dispatch({ type: 'SET_CART', payload: mockCartData.cart || mockCartData });
       } catch (mockError) {
         dispatch({ type: 'SET_ERROR', payload: mockError.message });
       }
@@ -223,7 +228,7 @@ export const CartProvider = ({ children }) => {
       // Try to use mock API
       try {
         const mockCartData = await mockRemoveFromCart(sessionId, itemId);
-        dispatch({ type: 'SET_CART', payload: mockCartData });
+        dispatch({ type: 'SET_CART', payload: mockCartData.cart || mockCartData });
       } catch (mockError) {
         dispatch({ type: 'SET_ERROR', payload: mockError.message });
       }
@@ -241,7 +246,7 @@ export const CartProvider = ({ children }) => {
       // Try to use mock API
       try {
         const mockCartData = await mockUpdateCartItem(sessionId, itemId, quantity);
-        dispatch({ type: 'SET_CART', payload: mockCartData });
+        dispatch({ type: 'SET_CART', payload: mockCartData.cart || mockCartData });
       } catch (mockError) {
         dispatch({ type: 'SET_ERROR', payload: mockError.message });
       }

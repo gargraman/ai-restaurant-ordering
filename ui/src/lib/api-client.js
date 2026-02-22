@@ -338,7 +338,7 @@ export const logoutUser = async () => {
  * @returns {Promise<Object>} Created restaurant
  */
 export const createRestaurant = async (restaurantData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/restaurants`, {
+  const response = await fetch(`${API_BASE_URL}/restaurants`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -362,7 +362,7 @@ export const createRestaurant = async (restaurantData) => {
  * @returns {Promise<Object>} {account_id, onboarding_url, expires_at}
  */
 export const connectStripe = async (restaurantId, connectData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/stripe/connect`, {
+  const response = await fetch(`${API_BASE_URL}/restaurants/${restaurantId}/stripe/connect`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -389,7 +389,7 @@ export const connectStripe = async (restaurantId, connectData) => {
  * @returns {Promise<Object>} Stripe status
  */
 export const getStripeStatus = async (restaurantId) => {
-  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/stripe/status`, {
+  const response = await fetch(`${API_BASE_URL}/restaurants/${restaurantId}/stripe/status`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -412,7 +412,7 @@ export const getStripeStatus = async (restaurantId) => {
  * @returns {Promise<Object>} Connection status
  */
 export const connectPos = async (restaurantId, posData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/pos/connect`, {
+  const response = await fetch(`${API_BASE_URL}/restaurants/${restaurantId}/pos/connect`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -435,7 +435,7 @@ export const connectPos = async (restaurantId, posData) => {
  * @returns {Promise<Object>} POS status
  */
 export const getPosStatus = async (restaurantId) => {
-  const response = await fetch(`${API_BASE_URL}/admin/restaurants/${restaurantId}/pos/status`, {
+  const response = await fetch(`${API_BASE_URL}/restaurants/${restaurantId}/pos/status`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
