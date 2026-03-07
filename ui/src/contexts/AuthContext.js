@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
+import { loginUser, getCurrentUser, logoutUser } from '@/lib/api-client';
 
 const AuthContext = createContext({
   user: null,
@@ -15,20 +16,19 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
     checkAuth();
   }, []);
 
   const checkAuth = async () => {
     try {
-      // TODO: Implement actual auth check with backend
-      // For now, just check localStorage
-      const savedUser = localStorage.getItem('user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const profile = await getCurrentUser();
+      setUser(profile);
     } catch (error) {
-      console.error('Auth check failed:', error);
+      // Token invalid or expired — clear storage
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
     } finally {
       setIsLoading(false);
     }
@@ -36,17 +36,12 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      // TODO: Implement actual login with backend
-      // For now, mock login
-      const mockUser = {
-        id: '1',
-        email,
-        name: 'Admin User',
-        role: 'admin',
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+      const tokens = await loginUser(email, password);
+      localStorage.setItem('access_token', tokens.access_token);
+      localStorage.setItem('refresh_token', tokens.refresh_token);
+
+      const profile = await getCurrentUser();
+      setUser(profile);
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
@@ -56,14 +51,16 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      // TODO: Implement actual logout with backend
-      setUser(null);
-      localStorage.removeItem('user');
-      return { success: true };
+      await logoutUser();
     } catch (error) {
-      console.error('Logout failed:', error);
-      return { success: false, error: error.message };
+      // Ignore logout errors — always clear local state
+      console.warn('Logout request failed:', error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
     }
+    return { success: true };
   };
 
   const value = {

@@ -140,11 +140,10 @@ def _get_llm() -> ChatOpenAI:
     """Get cached LLM instance."""
     global _llm_instance
     if _llm_instance is None:
-        _llm_instance = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            temperature=0,
-        )
+        kwargs: dict = {"model": settings.openai_model, "temperature": 0}
+        if settings.openai_api_key:
+            kwargs["api_key"] = settings.openai_api_key
+        _llm_instance = ChatOpenAI(**kwargs)
     return _llm_instance
 
 

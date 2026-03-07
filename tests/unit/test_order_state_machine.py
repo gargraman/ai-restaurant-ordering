@@ -19,6 +19,7 @@ def order():
         idempotency_key="key-123",
         subtotal_cents=1000,
         total_cents=1200,
+        pos_retry_count=0,  # Explicitly set the default value
     )
 
 

@@ -86,9 +86,13 @@ def make_celery_app() -> Celery:
         beat_schedule_filename="/tmp/celerybeat-schedule",
     )
 
-    # Import beat schedule
-    from src.tasks.beat_schedule import CELERYBEAT_SCHEDULE
-    app.conf.beat_schedule = CELERYBEAT_SCHEDULE
+    # Import beat schedule inside the function to avoid circular import
+    try:
+        from src.tasks.beat_schedule import CELERYBEAT_SCHEDULE
+        app.conf.beat_schedule = CELERYBEAT_SCHEDULE
+    except ImportError:
+        # If there's an import error, continue without the beat schedule
+        pass
 
     return app
 

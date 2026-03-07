@@ -141,6 +141,7 @@ services:
       - SESSION_TTL_SECONDS=86400
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - SENDGRID_API_KEY=test_key_for_local_development
     ports:
       - "8000:8000"
@@ -165,11 +166,19 @@ services:
     build:
       context: ..
       dockerfile: deployment/Dockerfile.ui
+      args:
+        BACKEND_URL: http://api:8000
+        NODE_ENV: production
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     container_name: hybrid-search-ui
     ports:
       - "3000:3000"
+    environment:
+      # Ensure backend is accessible from the container
+      BACKEND_URL: http://api:8000
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/nginx-health"]
       interval: 30s
@@ -209,6 +218,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "src.tasks.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
     volumes:
       - ../src:/app/src:ro
     networks:

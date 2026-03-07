@@ -2,6 +2,7 @@
 
 import pytest
 from src.ingestion.transformer import DocumentTransformer
+from src.models.index import IndexDocument
 from src.models.source import (
     RestaurantData,
     Restaurant,
@@ -433,3 +434,108 @@ class TestDocumentTransformer:
             # All items from same restaurant should have matching restaurant_id
             restaurant_ids = [doc.restaurant_id for doc in documents]
             assert all(rid == restaurant_ids[0] for rid in restaurant_ids)
+
+    def test_transform_file(self, tmp_path, sample_restaurant_data):
+        """Test transforming a JSON file from disk."""
+        import json
+
+        file_path = tmp_path / "restaurant.json"
+        file_path.write_text(json.dumps(sample_restaurant_data))
+
+        transformer = DocumentTransformer()
+        documents = transformer.transform_file(file_path)
+
+        assert len(documents) == 2
+        assert documents[0].item_name == "Pasta Tray"
+
+    def test_transform_directory(self, tmp_path, sample_restaurant_data):
+        """Test transforming all JSON files in a directory."""
+        import json
+
+        (tmp_path / "r1.json").write_text(json.dumps(sample_restaurant_data))
+        (tmp_path / "r2.json").write_text(json.dumps(sample_restaurant_data))
+        # Schema files should be skipped
+        (tmp_path / "schema.json").write_text("{}")
+
+        transformer = DocumentTransformer()
+        documents = transformer.transform_directory(tmp_path)
+
+        assert len(documents) == 4  # 2 items × 2 files
+        assert transformer.stats["restaurants_processed"] == 2
+
+    def test_transform_directory_skips_bad_files(self, tmp_path, sample_restaurant_data):
+        """Test that bad files are skipped without crashing."""
+        import json
+
+        (tmp_path / "good.json").write_text(json.dumps(sample_restaurant_data))
+        (tmp_path / "bad.json").write_text("not valid json {{{")
+
+        transformer = DocumentTransformer()
+        documents = transformer.transform_directory(tmp_path)
+
+        assert len(documents) == 2  # Only good file
+
+    def test_transform_directory_empty(self, tmp_path):
+        """Test transforming an empty directory."""
+        transformer = DocumentTransformer()
+        documents = transformer.transform_directory(tmp_path)
+
+        assert len(documents) == 0
+
+    def test_transform_item_error_skips_item(self):
+        """Test that a bad item in a group is skipped, not crash."""
+        from unittest.mock import patch
+
+        transformer = DocumentTransformer()
+        data = {
+            "metadata": {"sourcePlatform": "test"},
+            "restaurant": {
+                "name": "Test",
+                "cuisine": ["Italian"],
+                "location": {
+                    "address": "123 Main St",
+                    "city": "Boston",
+                    "state": "MA",
+                    "zipCode": "02101",
+                    "coordinates": {"latitude": 42.3601, "longitude": -71.0589},
+                },
+            },
+            "menus": [
+                {
+                    "name": "Catering",
+                    "menuGroups": [
+                        {
+                            "name": "Entrees",
+                            "menuItems": [
+                                {
+                                    "name": "Good Item",
+                                    "price": {"basePrice": 10.0},
+                                },
+                                {
+                                    "name": "Another Good Item",
+                                    "price": {"basePrice": 20.0},
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        # Force the first call to from_menu_item to raise, second succeeds
+        original_from_menu_item = IndexDocument.from_menu_item
+        call_count = [0]
+
+        def failing_first(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("Simulated error")
+            return original_from_menu_item(*args, **kwargs)
+
+        with patch.object(IndexDocument, "from_menu_item", side_effect=failing_first):
+            documents = transformer.transform_data(data)
+
+        # First item errored, second succeeded
+        assert len(documents) == 1
+        assert transformer.stats["items_processed"] == 2
+        assert transformer.stats["documents_created"] == 1

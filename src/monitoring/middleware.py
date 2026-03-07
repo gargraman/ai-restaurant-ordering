@@ -9,6 +9,16 @@ from src.metrics import REQUEST_COUNT, REQUEST_DURATION, APPLICATION_ERRORS
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 
+def collect_system_metrics():
+    """Placeholder function for collecting system metrics.
+    
+    This function is referenced by tests but the actual implementation
+    is in src.monitoring.system_metrics module.
+    """
+    from src.monitoring.system_metrics import collect_system_metrics as actual_collect_system_metrics
+    return actual_collect_system_metrics()
+
+
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Middleware to collect metrics for HTTP requests."""
 

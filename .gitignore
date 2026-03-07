@@ -63,6 +63,7 @@ docker/data/
 # UI
 node_modules/
 ui/node_modules/
+ui/.next
 
 # Temporary files
 tmp/

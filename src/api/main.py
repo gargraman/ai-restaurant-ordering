@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
@@ -120,32 +122,58 @@ def create_app() -> FastAPI:
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(ErrorTrackingMiddleware)
 
-    # CORS middleware
+    # Request logging middleware (inside CORS so CORS headers are always present)
+    class RequestLoggingMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            process_time = (time.time() - start_time) * 1000
+            logger.info(
+                "request_completed",
+                method=request.method,
+                path=str(request.url.path),
+                status_code=response.status_code,
+                process_time_ms=round(process_time, 2),
+            )
+            return response
+
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # CORS middleware — must be outermost to ensure CORS headers are always present.
+    # Note: allow_origins=["*"] with allow_credentials=True is invalid per the CORS
+    # spec (browsers ignore Access-Control-Allow-Origin: * when credentials are sent).
+    # Use explicit origins for credential support.
+    allowed_origins = [
+        "http://localhost:3000",  # Next.js dev
+        "http://127.0.0.1:3000",
+    ]
+    # In production, override via CORS_ALLOWED_ORIGINS env var (comma-separated)
+    env_origins = os.environ.get("CORS_ALLOWED_ORIGINS")
+    if env_origins:
+        allowed_origins = [o.strip() for o in env_origins.split(",")]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Request logging middleware
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next):
-        start_time = time.time()
-
-        response = await call_next(request)
-
-        process_time = (time.time() - start_time) * 1000
-        logger.info(
-            "request_completed",
-            method=request.method,
-            path=str(request.url.path),
-            status_code=response.status_code,
-            process_time_ms=round(process_time, 2),
-        )
-
-        return response
+    # Include API routers
+    from src.api.routers import (
+        auth_router,
+        orders_router,
+        restaurants_router,
+        tenants_router,
+        webhooks_router
+    )
+    
+    app.include_router(auth_router)
+    app.include_router(orders_router)  # No prefix needed as routes in orders router already have /orders prefix
+    app.include_router(restaurants_router)  # prefix="/restaurants" already defined in router
+    app.include_router(tenants_router)  # prefix="/tenants" already defined in router
+    app.include_router(webhooks_router)  # prefix="/webhooks" already defined in router
 
     # Health check
     @app.get("/health")
@@ -266,7 +294,18 @@ def create_app() -> FastAPI:
         """Get session state."""
         session = await session_manager.get_session(session_id)
         if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+            # Return empty session for new/unknown session IDs instead of 404.
+            # The UI fetches session on mount before any interaction has occurred.
+            from datetime import datetime
+            now = datetime.utcnow().isoformat()
+            return SessionResponse(
+                session_id=session_id,
+                created_at=now,
+                last_activity=now,
+                entities={},
+                conversation_length=0,
+                previous_results_count=0,
+            )
 
         return SessionResponse(
             session_id=session.session_id,

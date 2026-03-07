@@ -152,18 +152,22 @@ async def test_metrics_middleware_calls_dispatch_method():
     """Test that middleware dispatch method is called correctly."""
     app_mock = AsyncMock()
     middleware = MetricsMiddleware(app_mock)
+
+    # Create a proper URL mock with path attribute
+    url_mock = MagicMock()
+    url_mock.path = "/"
     
     request = AsyncMock()
     request.method = "GET"
-    request.url = "http://testserver/"
+    request.url = url_mock  # Use the URL mock with path attribute
     request.__getitem__ = lambda _, key: {"content-type": "application/json"}.get(key, "")
     request.headers = {"content-type": "application/json"}
-    
+
     call_next = AsyncMock()
     response_mock = AsyncMock()
     response_mock.status_code = 200
     call_next.return_value = response_mock
-    
+
     # Mock the metrics collection to avoid actual system calls
     with patch('src.monitoring.middleware.collect_system_metrics') as mock_collect:
         mock_collect.return_value = {
@@ -172,9 +176,9 @@ async def test_metrics_middleware_calls_dispatch_method():
             "disk_usage_percent": 30.0,
             "timestamp": datetime.now().isoformat()
         }
-        
+
         response = await middleware.dispatch(request, call_next)
-        
+
         # Verify call_next was called
         call_next.assert_called_once()
         # Verify response was returned

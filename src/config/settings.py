@@ -1,7 +1,11 @@
 """Application configuration settings."""
 
 from functools import lru_cache
-from typing import Literal
+try:
+    from typing import Literal
+except ImportError:
+    # For Python < 3.8, use typing_extensions
+    from typing_extensions import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -158,7 +162,7 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    def validate_required_configs(self) -> list[str]:
+    def validate_required_configs(self) -> 'list[str]':
         """Validate required configuration at startup.
 
         Returns:

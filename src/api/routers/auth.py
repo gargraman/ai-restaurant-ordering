@@ -39,7 +39,6 @@ class RegisterRequest(BaseModel):
     tenant_id: str | None = Field(
         None, description="Tenant ID (required for non-platform users)"
     )
-    role: UserRole = Field(default=UserRole.CUSTOMER)
 
 
 class LoginRequest(BaseModel):
@@ -115,8 +114,8 @@ async def register(
             detail="Email already registered",
         )
 
-    # Validate tenant_id for non-platform users
-    if request.role != UserRole.PLATFORM_ADMIN and not request.tenant_id:
+    # Validate tenant_id is required for public registration
+    if not request.tenant_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="tenant_id is required for non-platform users",
@@ -125,14 +124,14 @@ async def register(
     # Hash password
     password_hash = hash_password(request.password)
 
-    # Create user
+    # Create user — role is always CUSTOMER for public registration
     user = User(
         email=request.email.lower(),
         password_hash=password_hash,
         first_name=request.first_name,
         last_name=request.last_name,
         phone=request.phone,
-        role=_map_auth_role_to_db(request.role),
+        role=DBUserRole.CUSTOMER,
         tenant_id=request.tenant_id,
         is_active=True,
         is_verified=False,
