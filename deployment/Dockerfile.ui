@@ -3,32 +3,44 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Accept build arguments for backend URL
+# Accept build arguments for backend URL and public API URL
 ARG BACKEND_URL=http://api:8000
 ARG NODE_ENV=production
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Make NEXT_PUBLIC_API_URL available during next build (inlined at build time)
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy UI package files first (for better caching)
-COPY ui/package*.json ./
+COPY chatbot-ui/package*.json ./
 
 # Install dependencies (including devDependencies for build tools)
 RUN npm install --include=dev
 
+# Ensure public directory exists before build
+RUN mkdir -p public
+
 # Copy UI source files (excluding node_modules via .dockerignore)
-COPY ui/ .
+COPY chatbot-ui/ .
 
 # Build the Next.js app with backend URL for rewrites
 RUN BACKEND_URL=$BACKEND_URL NODE_ENV=$NODE_ENV npm run build
-
-# Create public directory if it doesn't exist
-RUN mkdir -p public
 
 # Production stage - Using Next.js standalone mode with nginx
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install nginx and curl for healthcheck
-RUN apk add --no-cache nginx curl
+# Install nginx, curl (healthcheck), and tini (PID 1 / signal handling)
+RUN apk add --no-cache nginx curl tini
+
+# Create non-root user for running the application
+RUN addgroup -S app && adduser -S app -G app
+
+# Create nginx temp/run dirs writable by the app user
+RUN mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+    && mkdir -p /var/log/nginx \
+    && chown -R app:app /tmp/nginx /var/log/nginx
 
 # Copy built Next.js app from builder
 COPY --from=builder /app/.next/standalone ./
@@ -37,24 +49,31 @@ COPY --from=builder /app/public ./public
 # Copy Next.js static assets to be served by nginx
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy nginx configuration
+# Copy nginx configuration and entrypoint
 COPY deployment/nginx.conf /etc/nginx/nginx.conf
+COPY deployment/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Create directory for nginx logs
-RUN mkdir -p /var/log/nginx
+# Fix ownership of app files
+RUN chown -R app:app /app /entrypoint.sh
 
-# Expose port
+# Expose port (nginx listens on 3000, Next.js on 3001 internally)
 EXPOSE 3000
 
 # Set environment
 ENV NODE_ENV=production
-ENV PORT=3001  
+ENV PORT=3001
 
-# Next.js server will run on port 3001
+# Pass through the public API URL baked in at build time
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# Switch to non-root user
+USER app
+
+# Health check against nginx (entry point for all traffic)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:3000/nginx-health || exit 1
 
-# Start both nginx and Next.js server
-CMD sh -c "node server.js & nginx -g 'daemon off;'"
+# tini as PID 1 ensures proper signal forwarding and zombie reaping
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/entrypoint.sh"]

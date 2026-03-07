@@ -169,14 +169,16 @@ services:
       args:
         BACKEND_URL: http://api:8000
         NODE_ENV: production
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     container_name: hybrid-search-ui
     ports:
-      - "3000:3001"
+      - "3000:3000"
     environment:
       # Ensure backend is accessible from the container
       BACKEND_URL: http://api:8000
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/nginx-health"]
       interval: 30s
