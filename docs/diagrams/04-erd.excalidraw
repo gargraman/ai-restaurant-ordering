@@ -1,7 +1,7 @@
 {
   "type": "excalidraw",
   "version": 2,
-  "source": "claude-code-excalidraw-skill",
+  "source": "https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor",
   "elements": [
     {
       "id": "title",
@@ -22,11 +22,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 1,
-      "version": 1,
-      "versionNonce": 1,
+      "version": 2,
+      "versionNonce": 603939580,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843281,
       "link": null,
       "locked": false,
       "text": "Entity Relationship Diagram",
@@ -37,7 +37,9 @@
       "baseline": 25,
       "containerId": null,
       "originalText": "Entity Relationship Diagram",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a0",
+      "autoResize": true
     },
     {
       "id": "restaurant-data",
@@ -56,15 +58,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 2,
-      "version": 1,
-      "versionNonce": 2,
+      "version": 2,
+      "versionNonce": 676944580,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "restaurant-data-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "restaurant-data-text"
+        }
+      ],
+      "updated": 1773485843281,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a1"
     },
     {
       "id": "restaurant-data-text",
@@ -85,11 +95,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 3,
-      "version": 1,
-      "versionNonce": 3,
+      "version": 2,
+      "versionNonce": 680633212,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843281,
       "link": null,
       "locked": false,
       "text": "RestaurantData\n(Root Document)",
@@ -100,7 +110,9 @@
       "baseline": 14,
       "containerId": "restaurant-data",
       "originalText": "RestaurantData\n(Root Document)",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a2",
+      "autoResize": true
     },
     {
       "id": "restaurant",
@@ -119,15 +131,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 4,
-      "version": 1,
-      "versionNonce": 4,
+      "version": 2,
+      "versionNonce": 493445700,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "restaurant-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "restaurant-text"
+        }
+      ],
+      "updated": 1773485843281,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a3"
     },
     {
       "id": "restaurant-text",
@@ -148,11 +168,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 5,
-      "version": 1,
-      "versionNonce": 5,
+      "version": 2,
+      "versionNonce": 1376244732,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Restaurant\n─────────\nname: str\ncuisine: list[str]\nlocation: Location",
@@ -163,7 +183,9 @@
       "baseline": 14,
       "containerId": "restaurant",
       "originalText": "Restaurant\n─────────\nname: str\ncuisine: list[str]\nlocation: Location",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a4",
+      "autoResize": true
     },
     {
       "id": "location",
@@ -182,23 +204,31 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 6,
-      "version": 1,
-      "versionNonce": 6,
+      "version": 2,
+      "versionNonce": 302807492,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "location-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "location-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a5"
     },
     {
       "id": "location-text",
       "type": "text",
-      "x": 110,
-      "y": 415,
-      "width": 180,
-      "height": 110,
+      "x": 142.08206939697266,
+      "y": 417.5,
+      "width": 115.83586120605469,
+      "height": 105,
       "angle": 0,
       "strokeColor": "#868e96",
       "backgroundColor": "transparent",
@@ -211,11 +241,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 7,
-      "version": 1,
-      "versionNonce": 7,
+      "version": 4,
+      "versionNonce": 1455697660,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485847005,
       "link": null,
       "locked": false,
       "text": "Location\n─────────\naddress: str\ncity: str\nstate: str\nzip_code: str\ncoordinates: Coords",
@@ -226,7 +256,9 @@
       "baseline": 12,
       "containerId": "location",
       "originalText": "Location\n─────────\naddress: str\ncity: str\nstate: str\nzip_code: str\ncoordinates: Coords",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a6",
+      "autoResize": true
     },
     {
       "id": "menu",
@@ -245,15 +277,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 8,
-      "version": 1,
-      "versionNonce": 8,
+      "version": 2,
+      "versionNonce": 1096851780,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "menu-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "menu-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a7"
     },
     {
       "id": "menu-text",
@@ -274,11 +314,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 9,
-      "version": 1,
-      "versionNonce": 9,
+      "version": 2,
+      "versionNonce": 2070414588,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Menu\n─────────\nmenu_id: str\nname: str\ndescription: str",
@@ -289,7 +329,9 @@
       "baseline": 14,
       "containerId": "menu",
       "originalText": "Menu\n─────────\nmenu_id: str\nname: str\ndescription: str",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a8",
+      "autoResize": true
     },
     {
       "id": "menu-group",
@@ -308,15 +350,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 10,
-      "version": 1,
-      "versionNonce": 10,
+      "version": 2,
+      "versionNonce": 1388566724,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "menu-group-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "menu-group-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a9"
     },
     {
       "id": "menu-group-text",
@@ -337,11 +387,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 11,
-      "version": 1,
-      "versionNonce": 11,
+      "version": 2,
+      "versionNonce": 244712828,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "MenuGroup\n─────────\ngroup_id: str\nname: str\ndescription: str",
@@ -352,7 +402,9 @@
       "baseline": 14,
       "containerId": "menu-group",
       "originalText": "MenuGroup\n─────────\ngroup_id: str\nname: str\ndescription: str",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aA",
+      "autoResize": true
     },
     {
       "id": "menu-item",
@@ -371,15 +423,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 12,
-      "version": 1,
-      "versionNonce": 12,
+      "version": 2,
+      "versionNonce": 1372856388,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "menu-item-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "menu-item-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aB"
     },
     {
       "id": "menu-item-text",
@@ -400,11 +460,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 13,
-      "version": 1,
-      "versionNonce": 13,
+      "version": 2,
+      "versionNonce": 2100295164,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "MenuItem\n─────────────────\nitem_id: str\nname: str\ndescription: str\nprice: Price\ndietary_labels: list[str]\nserving_size: ServingSize\ntags: list[str]",
@@ -415,7 +475,9 @@
       "baseline": 13,
       "containerId": "menu-item",
       "originalText": "MenuItem\n─────────────────\nitem_id: str\nname: str\ndescription: str\nprice: Price\ndietary_labels: list[str]\nserving_size: ServingSize\ntags: list[str]",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aC",
+      "autoResize": true
     },
     {
       "id": "price",
@@ -434,15 +496,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 14,
-      "version": 1,
-      "versionNonce": 14,
+      "version": 2,
+      "versionNonce": 644839364,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "price-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "price-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aD"
     },
     {
       "id": "price-text",
@@ -463,11 +533,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 15,
-      "version": 1,
-      "versionNonce": 15,
+      "version": 2,
+      "versionNonce": 1412945532,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Price\n─────────\nbase_price: float\ndisplay_price: float\ncurrency: str",
@@ -478,7 +548,9 @@
       "baseline": 11,
       "containerId": "price",
       "originalText": "Price\n─────────\nbase_price: float\ndisplay_price: float\ncurrency: str",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aE",
+      "autoResize": true
     },
     {
       "id": "portion",
@@ -497,15 +569,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 16,
-      "version": 1,
-      "versionNonce": 16,
+      "version": 2,
+      "versionNonce": 213114692,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "portion-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "portion-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aF"
     },
     {
       "id": "portion-text",
@@ -526,11 +606,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 17,
-      "version": 1,
-      "versionNonce": 17,
+      "version": 2,
+      "versionNonce": 812623612,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Portion\n─────────\nname: str\nprice: Price\nserving_size",
@@ -541,7 +621,9 @@
       "baseline": 11,
       "containerId": "portion",
       "originalText": "Portion\n─────────\nname: str\nprice: Price\nserving_size",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aG",
+      "autoResize": true
     },
     {
       "id": "modifier-group",
@@ -560,15 +642,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 18,
-      "version": 1,
-      "versionNonce": 18,
+      "version": 2,
+      "versionNonce": 218060484,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "modifier-group-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "modifier-group-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aH"
     },
     {
       "id": "modifier-group-text",
@@ -589,11 +679,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 19,
-      "version": 1,
-      "versionNonce": 19,
+      "version": 2,
+      "versionNonce": 1180264316,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "ModifierGroup\n─────────\nname: str\nselection_type\nis_required: bool",
@@ -604,7 +694,9 @@
       "baseline": 11,
       "containerId": "modifier-group",
       "originalText": "ModifierGroup\n─────────\nname: str\nselection_type\nis_required: bool",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aI",
+      "autoResize": true
     },
     {
       "id": "modifier",
@@ -623,15 +715,23 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 20,
-      "version": 1,
-      "versionNonce": 20,
+      "version": 2,
+      "versionNonce": 1945099844,
       "isDeleted": false,
-      "boundElements": [{ "type": "text", "id": "modifier-text" }],
-      "updated": 1,
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "modifier-text"
+        }
+      ],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aJ"
     },
     {
       "id": "modifier-text",
@@ -652,11 +752,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 21,
-      "version": 1,
-      "versionNonce": 21,
+      "version": 2,
+      "versionNonce": 1781995516,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Modifier\n─────────\nname: str\nprice: Price",
@@ -667,7 +767,9 @@
       "baseline": 11,
       "containerId": "modifier",
       "originalText": "Modifier\n─────────\nname: str\nprice: Price",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aK",
+      "autoResize": true
     },
     {
       "id": "arrow-root-restaurant",
@@ -688,20 +790,34 @@
       "frameId": null,
       "roundness": null,
       "seed": 22,
-      "version": 1,
-      "versionNonce": 22,
+      "version": 2,
+      "versionNonce": 1248032196,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [-180, 0], [-180, 60]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -180,
+          0
+        ],
+        [
+          -180,
+          60
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aL"
     },
     {
       "id": "label-root-restaurant",
@@ -722,11 +838,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 23,
-      "version": 1,
-      "versionNonce": 23,
+      "version": 2,
+      "versionNonce": 403355772,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 1",
@@ -737,7 +853,9 @@
       "baseline": 12,
       "containerId": null,
       "originalText": "has 1",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aM",
+      "autoResize": true
     },
     {
       "id": "arrow-root-menu",
@@ -758,20 +876,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 24,
-      "version": 1,
-      "versionNonce": 24,
+      "version": 2,
+      "versionNonce": 1299717444,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 60]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          60
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aN"
     },
     {
       "id": "label-root-menu",
@@ -792,11 +920,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 25,
-      "version": 1,
-      "versionNonce": 25,
+      "version": 2,
+      "versionNonce": 2073446652,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 1..*",
@@ -807,7 +935,9 @@
       "baseline": 12,
       "containerId": null,
       "originalText": "has 1..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aO",
+      "autoResize": true
     },
     {
       "id": "arrow-restaurant-location",
@@ -828,20 +958,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 26,
-      "version": 1,
-      "versionNonce": 26,
+      "version": 2,
+      "versionNonce": 1720440004,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 60]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          60
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aP"
     },
     {
       "id": "label-restaurant-location",
@@ -862,11 +1002,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 27,
-      "version": 1,
-      "versionNonce": 27,
+      "version": 2,
+      "versionNonce": 2019281276,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 1",
@@ -877,7 +1017,9 @@
       "baseline": 12,
       "containerId": null,
       "originalText": "has 1",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aQ",
+      "autoResize": true
     },
     {
       "id": "arrow-menu-menugroup",
@@ -898,20 +1040,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 28,
-      "version": 1,
-      "versionNonce": 28,
+      "version": 2,
+      "versionNonce": 591174724,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 60]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          60
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aR"
     },
     {
       "id": "label-menu-menugroup",
@@ -932,11 +1084,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 29,
-      "version": 1,
-      "versionNonce": 29,
+      "version": 2,
+      "versionNonce": 832387580,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..*",
@@ -947,7 +1099,9 @@
       "baseline": 12,
       "containerId": null,
       "originalText": "has 0..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aS",
+      "autoResize": true
     },
     {
       "id": "arrow-menugroup-menuitem",
@@ -968,20 +1122,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 30,
-      "version": 1,
-      "versionNonce": 30,
+      "version": 2,
+      "versionNonce": 761820100,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 60]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          60
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aT"
     },
     {
       "id": "label-menugroup-menuitem",
@@ -1002,11 +1166,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 31,
-      "version": 1,
-      "versionNonce": 31,
+      "version": 2,
+      "versionNonce": 308058748,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..*",
@@ -1017,7 +1181,9 @@
       "baseline": 12,
       "containerId": null,
       "originalText": "has 0..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aU",
+      "autoResize": true
     },
     {
       "id": "arrow-menuitem-price",
@@ -1038,20 +1204,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 32,
-      "version": 1,
-      "versionNonce": 32,
+      "version": 2,
+      "versionNonce": 1127045956,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [80, 0]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          80,
+          0
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aV"
     },
     {
       "id": "label-menuitem-price",
@@ -1072,11 +1248,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 33,
-      "version": 1,
-      "versionNonce": 33,
+      "version": 2,
+      "versionNonce": 1432087292,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..1",
@@ -1087,7 +1263,9 @@
       "baseline": 10,
       "containerId": null,
       "originalText": "has 0..1",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aW",
+      "autoResize": true
     },
     {
       "id": "arrow-menuitem-portion",
@@ -1108,20 +1286,38 @@
       "frameId": null,
       "roundness": null,
       "seed": 34,
-      "version": 1,
-      "versionNonce": 34,
+      "version": 2,
+      "versionNonce": 787043012,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [40, 0], [40, 40], [80, 40]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          40
+        ],
+        [
+          80,
+          40
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aX"
     },
     {
       "id": "label-menuitem-portion",
@@ -1142,11 +1338,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 35,
-      "version": 1,
-      "versionNonce": 35,
+      "version": 2,
+      "versionNonce": 220015484,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..*",
@@ -1157,7 +1353,9 @@
       "baseline": 10,
       "containerId": null,
       "originalText": "has 0..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aY",
+      "autoResize": true
     },
     {
       "id": "arrow-menuitem-modgroup",
@@ -1178,20 +1376,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 36,
-      "version": 1,
-      "versionNonce": 36,
+      "version": 2,
+      "versionNonce": 1060788804,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [-160, 0]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -160,
+          0
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "aZ"
     },
     {
       "id": "label-menuitem-modgroup",
@@ -1212,11 +1420,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 37,
-      "version": 1,
-      "versionNonce": 37,
+      "version": 2,
+      "versionNonce": 736254972,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..*",
@@ -1227,7 +1435,9 @@
       "baseline": 10,
       "containerId": null,
       "originalText": "has 0..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aa",
+      "autoResize": true
     },
     {
       "id": "arrow-modgroup-modifier",
@@ -1248,20 +1458,30 @@
       "frameId": null,
       "roundness": null,
       "seed": 38,
-      "version": 1,
-      "versionNonce": 38,
+      "version": 2,
+      "versionNonce": 1056862660,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 50]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          50
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
       "startArrowhead": null,
       "endArrowhead": "arrow",
-      "elbowed": true
+      "elbowed": true,
+      "index": "ab"
     },
     {
       "id": "label-modgroup-modifier",
@@ -1282,11 +1502,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 39,
-      "version": 1,
-      "versionNonce": 39,
+      "version": 2,
+      "versionNonce": 195918972,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "has 0..*",
@@ -1297,7 +1517,9 @@
       "baseline": 10,
       "containerId": null,
       "originalText": "has 0..*",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "ac",
+      "autoResize": true
     },
     {
       "id": "legend-box",
@@ -1316,15 +1538,18 @@
       "opacity": 100,
       "groupIds": [],
       "frameId": null,
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 40,
-      "version": 1,
-      "versionNonce": 40,
+      "version": 2,
+      "versionNonce": 1834195268,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "ad"
     },
     {
       "id": "legend-text",
@@ -1345,11 +1570,11 @@
       "frameId": null,
       "roundness": null,
       "seed": 41,
-      "version": 1,
-      "versionNonce": 41,
+      "version": 2,
+      "versionNonce": 1983941884,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1,
+      "boundElements": [],
+      "updated": 1773485843282,
       "link": null,
       "locked": false,
       "text": "Legend\n─────────\n■ Root Document\n■ Core Entities\n■ Sub-entities\n■ Value Objects\n\n→ has relationship",
@@ -1360,11 +1585,15 @@
       "baseline": 11,
       "containerId": null,
       "originalText": "Legend\n─────────\n■ Root Document\n■ Core Entities\n■ Sub-entities\n■ Value Objects\n\n→ has relationship",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "ae",
+      "autoResize": true
     }
   ],
   "appState": {
     "gridSize": 20,
+    "gridStep": 5,
+    "gridModeEnabled": false,
     "viewBackgroundColor": "#ffffff"
   },
   "files": {}
