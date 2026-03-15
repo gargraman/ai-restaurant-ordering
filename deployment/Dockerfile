@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir .
 # Copy application code
 COPY src/ ./src/
 COPY mocks/ ./mocks/
+COPY scripts/ ./scripts/
+# Copy sample data for ingestion (explicitly include despite .dockerignore)
+COPY data/sample/ ./data/sample/
+COPY restaurant-schema.json ./
 
 # Set environment variables
 ENV PYTHONPATH=/app
