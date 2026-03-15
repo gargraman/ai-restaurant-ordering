@@ -3,7 +3,9 @@
 # if either process dies unexpectedly.
 set -e
 
-node server.js &
+# Next.js standalone binds to HOSTNAME by default.
+# Force 0.0.0.0 so nginx (on localhost) can reach it.
+HOSTNAME=0.0.0.0 node server.js &
 NODE_PID=$!
 
 nginx -g 'daemon off;' &

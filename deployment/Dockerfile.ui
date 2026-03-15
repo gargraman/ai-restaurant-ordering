@@ -39,6 +39,7 @@ RUN addgroup -S app && adduser -S app -G app
 
 # Create nginx temp/run dirs writable by the app user
 RUN mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+              /tmp/nginx/uwsgi /tmp/nginx/scgi \
     && mkdir -p /var/log/nginx \
     && chown -R app:app /tmp/nginx /var/log/nginx
 
