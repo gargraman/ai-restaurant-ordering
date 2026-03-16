@@ -74,10 +74,12 @@ docs/
 # Alembic
 alembic.ini
 
-# Data
-data/
-*.json
-!restaurant-schema.json
+# Data - exclude large datasets but allow sample data
+# data/
+# *.json
+# !restaurant-schema.json
+# Allow sample data for development
+!data/sample/
 
 # Tests
 tests/
@@ -92,7 +94,8 @@ logs/
 .env*
 !.env.example
 
-# Deployment - exclude compose files but keep configs
+# Deployment - exclude compose files but keep configs needed for builds
 deployment/docker-compose*.yml
 deployment/Dockerfile*
-deployment/*.sh
+# NOTE: Do NOT exclude deployment/*.sh or deployment/*.conf
+# entrypoint.sh and nginx.conf are COPYed by Dockerfile.ui
