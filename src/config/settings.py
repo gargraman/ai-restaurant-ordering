@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
+    # LLM Provider
+    llm_provider: Literal["openai", "deepseek"] = "openai"
+
+    # DeepSeek
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
+    deepseek_base_url: str = "https://api.deepseek.com"
+
     # OpenSearch
     opensearch_host: str = "localhost"
     opensearch_port: int = 9200
@@ -147,6 +155,13 @@ class Settings(BaseSettings):
     encryption_key: str = ""
 
     @property
+    def active_llm_model(self) -> str:
+        """Return the model name for the active LLM provider."""
+        if self.llm_provider == "deepseek":
+            return self.deepseek_model
+        return self.openai_model
+
+    @property
     def postgres_dsn(self) -> str:
         """PostgreSQL connection string."""
         return (
@@ -181,6 +196,13 @@ class Settings(BaseSettings):
 
         if self.enable_pos_integration and not self.square_application_secret:
             errors.append("square_application_secret is required when POS integration is enabled")
+
+        if self.llm_provider == "deepseek" and not self.deepseek_api_key:
+            errors.append("deepseek_api_key is required when llm_provider is 'deepseek'")
+
+        if self.llm_provider == "deepseek" and self.deepseek_base_url:
+            if not self.deepseek_base_url.startswith("https://"):
+                errors.append("deepseek_base_url must use HTTPS scheme")
 
         # Check for notification configuration
         if not self.sendgrid_api_key and not self.smtp_server:
