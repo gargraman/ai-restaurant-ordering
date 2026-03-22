@@ -110,6 +110,8 @@ export default function ChatPage() {
           timestamp: new Date(),
           type: response.results.length > 0 ? "menu" : "text",
           menuItems: response.results,
+          intent: response.intent,
+          confidence: response.confidence,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
