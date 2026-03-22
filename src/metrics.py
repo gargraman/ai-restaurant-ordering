@@ -1,10 +1,23 @@
 """Metrics definitions for the hybrid search application."""
 
+import logging
 from prometheus_client import Counter, Histogram, Gauge
 import time
 import psutil
 import asyncio
 from typing import Dict, Any
+
+# LLM pricing per million tokens by model name
+LLM_COST_PER_MILLION: dict = {
+    "gpt-4-turbo-preview": {"input": 10.00, "output": 30.00},
+    "gpt-4o": {"input": 5.00, "output": 15.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    "deepseek-chat": {"input": 0.27, "output": 1.10},
+    "deepseek-coder": {"input": 0.27, "output": 1.10},
+}
+
+_metrics_logger = logging.getLogger(__name__)
 
 
 # Application Metrics
@@ -262,10 +275,12 @@ def record_llm_call(model: str, operation: str, duration: float, input_tokens: i
     if output_tokens_val > 0:
         LLM_TOKEN_USAGE_OUTPUT.labels(model=model).inc(output_tokens_val)
 
-    # Calculate and record cost (using example pricing)
-    # Note: Actual pricing may vary
-    input_cost = (input_tokens_val / 1_000_000) * 0.01  # $0.01 per million input tokens for GPT-4
-    output_cost = (output_tokens_val / 1_000_000) * 0.03  # $0.03 per million output tokens for GPT-4
+    # Calculate and record cost using per-model pricing (per million tokens)
+    if model not in LLM_COST_PER_MILLION:
+        _metrics_logger.warning("unknown_model_pricing", extra={"model": model, "fallback": "gpt-4-turbo-preview"})
+    pricing = LLM_COST_PER_MILLION.get(model, {"input": 10.00, "output": 30.00})
+    input_cost = (input_tokens_val / 1_000_000) * pricing["input"]
+    output_cost = (output_tokens_val / 1_000_000) * pricing["output"]
 
     total_cost = input_cost + output_cost
     LLM_COST_USD.labels(model=model).inc(total_cost)

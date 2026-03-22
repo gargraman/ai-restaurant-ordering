@@ -140,9 +140,21 @@ def _get_llm() -> ChatOpenAI:
     """Get cached LLM instance."""
     global _llm_instance
     if _llm_instance is None:
-        kwargs: dict = {"model": settings.openai_model, "temperature": 0}
-        if settings.openai_api_key:
-            kwargs["api_key"] = settings.openai_api_key
+        if settings.llm_provider == "deepseek":
+            kwargs: dict = {
+                "model": settings.deepseek_model,
+                "temperature": 0,
+                "base_url": settings.deepseek_base_url,
+            }
+            if settings.deepseek_api_key:
+                kwargs["api_key"] = settings.deepseek_api_key
+        else:
+            kwargs = {"model": settings.openai_model, "temperature": 0}
+            if settings.openai_api_key:
+                kwargs["api_key"] = settings.openai_api_key
+        logger.info(
+            "llm_initialized", provider=settings.llm_provider, model=settings.active_llm_model
+        )
         _llm_instance = ChatOpenAI(**kwargs)
     return _llm_instance
 
@@ -270,7 +282,7 @@ async def intent_detector_node(state: GraphState) -> GraphState:
 
         # Record LLM metrics
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='intent_detection',
             duration=duration,
             input_tokens=input_tokens,
@@ -296,7 +308,7 @@ async def intent_detector_node(state: GraphState) -> GraphState:
     except CircuitBreakerOpenException as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='intent_detection',
             duration=duration
         )
@@ -309,7 +321,7 @@ async def intent_detector_node(state: GraphState) -> GraphState:
     except (json.JSONDecodeError, ValidationError) as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='intent_detection',
             duration=duration
         )
@@ -322,7 +334,7 @@ async def intent_detector_node(state: GraphState) -> GraphState:
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='intent_detection',
             duration=duration
         )
@@ -397,7 +409,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
 
         # Record LLM metrics
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='entity_extraction',
             duration=duration,
             input_tokens=input_tokens,
@@ -453,7 +465,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     except CircuitBreakerOpenException as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='entity_extraction',
             duration=duration
         )
@@ -463,7 +475,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='entity_extraction',
             duration=duration
         )
@@ -494,7 +506,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
 
         # Record LLM metrics
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='query_expansion',
             duration=duration,
             input_tokens=input_tokens,
@@ -509,7 +521,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     except CircuitBreakerOpenException as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='query_expansion',
             duration=duration
         )
@@ -520,7 +532,7 @@ async def query_rewriter_node(state: GraphState) -> GraphState:
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='query_expansion',
             duration=duration
         )
@@ -837,7 +849,7 @@ async def rag_generator_node(state: GraphState) -> GraphState:
 
         # Record LLM metrics
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='rag_generation',
             duration=duration,
             input_tokens=input_tokens,
@@ -852,7 +864,7 @@ async def rag_generator_node(state: GraphState) -> GraphState:
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='rag_generation',
             duration=duration
         )
@@ -887,7 +899,7 @@ async def clarification_node(state: GraphState) -> GraphState:
 
         # Record LLM metrics
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='clarification_generation',
             duration=duration,
             input_tokens=input_tokens,
@@ -900,7 +912,7 @@ async def clarification_node(state: GraphState) -> GraphState:
     except Exception as e:
         duration = time.time() - start_time
         record_llm_call(
-            model=settings.openai_model,
+            model=settings.active_llm_model,
             operation='clarification_generation',
             duration=duration
         )

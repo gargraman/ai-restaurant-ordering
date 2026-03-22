@@ -24,6 +24,14 @@ from src.langgraph.nodes import (
 from src.langgraph.graph import route_after_intent
 
 
+def _llm_resp(content: str) -> MagicMock:
+    """Create a properly-mocked LLM response with token usage metadata."""
+    return MagicMock(
+        content=content,
+        response_metadata={"token_usage": {"prompt_tokens": 100, "completion_tokens": 50}},
+    )
+
+
 def _base_state(**overrides) -> dict:
     """Create a base GraphState dict with required fields."""
     state = {
@@ -266,14 +274,12 @@ class TestIntentDetectorNode:
     async def test_search_intent(self):
         """Test classification of new search query."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content=json.dumps({
-                "intent": "search",
-                "is_follow_up": False,
-                "follow_up_type": None,
-                "confidence": 0.95,
-            })
-        )
+        mock_llm.ainvoke.return_value = _llm_resp(json.dumps({
+            "intent": "search",
+            "is_follow_up": False,
+            "follow_up_type": None,
+            "confidence": 0.95,
+        }))
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
             state = _base_state()
@@ -287,14 +293,12 @@ class TestIntentDetectorNode:
     async def test_filter_follow_up(self):
         """Test classification of filter follow-up."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content=json.dumps({
-                "intent": "filter",
-                "is_follow_up": True,
-                "follow_up_type": "price",
-                "confidence": 0.9,
-            })
-        )
+        mock_llm.ainvoke.return_value = _llm_resp(json.dumps({
+            "intent": "filter",
+            "is_follow_up": True,
+            "follow_up_type": "price",
+            "confidence": 0.9,
+        }))
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
             state = _base_state(
@@ -312,7 +316,7 @@ class TestIntentDetectorNode:
     async def test_malformed_json_fallback(self):
         """Test fallback when LLM returns invalid JSON."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(content="not valid json")
+        mock_llm.ainvoke.return_value = _llm_resp("not valid json")
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
             state = _base_state()
@@ -326,12 +330,10 @@ class TestIntentDetectorNode:
     async def test_invalid_intent_value_fallback(self):
         """Test fallback when LLM returns invalid intent value."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content=json.dumps({
-                "intent": "invalid_intent",
-                "is_follow_up": False,
-            })
-        )
+        mock_llm.ainvoke.return_value = _llm_resp(json.dumps({
+            "intent": "invalid_intent",
+            "is_follow_up": False,
+        }))
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
             state = _base_state()
@@ -357,14 +359,12 @@ class TestIntentDetectorNode:
     async def test_idempotency(self):
         """Test same input produces same output."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content=json.dumps({
-                "intent": "search",
-                "is_follow_up": False,
-                "follow_up_type": None,
-                "confidence": 0.9,
-            })
-        )
+        mock_llm.ainvoke.return_value = _llm_resp(json.dumps({
+            "intent": "search",
+            "is_follow_up": False,
+            "follow_up_type": None,
+            "confidence": 0.9,
+        }))
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
             state1 = _base_state()
@@ -390,12 +390,12 @@ class TestQueryRewriterNode:
         # First call: entity extraction
         # Second call: query expansion
         mock_llm.ainvoke.side_effect = [
-            MagicMock(content=json.dumps({
+            _llm_resp(json.dumps({
                 "city": "Boston",
                 "cuisine": ["Italian"],
                 "serves_min": 20,
             })),
-            MagicMock(content="Italian catering Boston pasta pizza tray corporate"),
+            _llm_resp("Italian catering Boston pasta pizza tray corporate"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -412,8 +412,8 @@ class TestQueryRewriterNode:
         """Test price decrease follow-up uses min(previous) * 0.9."""
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = [
-            MagicMock(content=json.dumps({"price_adjustment": "decrease"})),
-            MagicMock(content="cheaper affordable budget catering"),
+            _llm_resp(json.dumps({"price_adjustment": "decrease"})),
+            _llm_resp("cheaper affordable budget catering"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -435,8 +435,8 @@ class TestQueryRewriterNode:
         """Test price decrease without previous results uses existing price_max."""
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = [
-            MagicMock(content=json.dumps({"price_adjustment": "decrease"})),
-            MagicMock(content="cheaper budget"),
+            _llm_resp(json.dumps({"price_adjustment": "decrease"})),
+            _llm_resp("cheaper budget"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -453,8 +453,8 @@ class TestQueryRewriterNode:
         """Test serving increase follow-up."""
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = [
-            MagicMock(content=json.dumps({"serving_adjustment": "increase"})),
-            MagicMock(content="larger serving more people"),
+            _llm_resp(json.dumps({"serving_adjustment": "increase"})),
+            _llm_resp("larger serving more people"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -472,7 +472,7 @@ class TestQueryRewriterNode:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = [
             Exception("LLM error"),
-            MagicMock(content="fallback query"),
+            _llm_resp("fallback query"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -487,8 +487,8 @@ class TestQueryRewriterNode:
         """Test that new entities merge with existing session filters."""
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = [
-            MagicMock(content=json.dumps({"dietary_labels": ["vegetarian"]})),
-            MagicMock(content="vegetarian Italian Boston"),
+            _llm_resp(json.dumps({"dietary_labels": ["vegetarian"]})),
+            _llm_resp("vegetarian Italian Boston"),
         ]
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -644,8 +644,8 @@ class TestClarificationNode:
     async def test_generates_clarification(self):
         """Test that clarification question is generated."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content="Could you tell me what city you're looking in and how many people?"
+        mock_llm.ainvoke.return_value = _llm_resp(
+            "Could you tell me what city you're looking in and how many people?"
         )
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -679,8 +679,8 @@ class TestRAGGeneratorNode:
     async def test_generates_response_with_context(self):
         """Test response generation with menu items."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content="Here are Italian catering options in Boston:\n1. **Pasta Tray** - North End Catering ($149)"
+        mock_llm.ainvoke.return_value = _llm_resp(
+            "Here are Italian catering options in Boston:\n1. **Pasta Tray** - North End Catering ($149)"
         )
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
@@ -697,8 +697,8 @@ class TestRAGGeneratorNode:
     async def test_empty_context(self):
         """Test response with no matching items."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = MagicMock(
-            content="No menu items found matching your criteria."
+        mock_llm.ainvoke.return_value = _llm_resp(
+            "No menu items found matching your criteria."
         )
 
         with patch("src.langgraph.nodes._get_llm", return_value=mock_llm):
