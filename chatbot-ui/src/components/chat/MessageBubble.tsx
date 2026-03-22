@@ -14,12 +14,33 @@ import { formatTime } from "@/lib/utils";
 import type { Message, MenuItemResult } from "@/types/api";
 import { MenuCard } from "./MenuCard";
 import { MenuCardSkeleton } from "./MenuCardSkeleton";
-import { UtensilsCrossed, User } from "lucide-react";
+import { UtensilsCrossed, User, SearchIcon, FilterIcon, HelpCircle, BarChart3 } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;
   onAddToCart?: (item: MenuItemResult) => void;
   onQuickReply?: (reply: string) => void;
+}
+
+function getIntentIcon(intent: string) {
+  switch (intent?.toLowerCase()) {
+    case "search":
+      return <SearchIcon className="h-3.5 w-3.5" />;
+    case "filter":
+      return <FilterIcon className="h-3.5 w-3.5" />;
+    case "compare":
+      return <BarChart3 className="h-3.5 w-3.5" />;
+    case "clarify":
+      return <HelpCircle className="h-3.5 w-3.5" />;
+    default:
+      return null;
+  }
+}
+
+function getConfidenceColor(confidence: number): string {
+  if (confidence >= 0.9) return "bg-green-50 text-green-700 border-green-200";
+  if (confidence >= 0.7) return "bg-yellow-50 text-yellow-700 border-yellow-200";
+  return "bg-orange-50 text-orange-700 border-orange-200";
 }
 
 export function MessageBubble({
@@ -28,6 +49,7 @@ export function MessageBubble({
   onQuickReply,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const hasIntentBadge = message.intent && message.confidence !== undefined && !isUser;
 
   return (
     <motion.div
@@ -59,6 +81,38 @@ export function MessageBubble({
           isUser ? "items-end" : "items-start"
         }`}
       >
+        {/* Intent & Confidence Badge */}
+        {hasIntentBadge && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: -5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              type: "spring",
+              stiffness: 200,
+              damping: 20,
+            }}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border shadow-sm ${getConfidenceColor(
+              message.confidence!
+            )}`}
+          >
+            <motion.span
+              animate={{ rotate: [0, 10, -10, 0] }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                repeatDelay: 3,
+              }}
+            >
+              {getIntentIcon(message.intent)}
+            </motion.span>
+            <span className="capitalize">{message.intent}</span>
+            <span className="text-xs opacity-75">
+              {Math.round(message.confidence! * 100)}%
+            </span>
+          </motion.div>
+        )}
+
         <div
           className={`px-4 py-3 ${
             isUser

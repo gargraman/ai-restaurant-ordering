@@ -77,4 +77,6 @@ export interface Message {
   menuItems?: MenuItemResult[];
   type?: "text" | "menu" | "offer" | "order_confirmation" | "quick_replies";
   quickReplies?: string[];
+  intent?: string;
+  confidence?: number;
 }

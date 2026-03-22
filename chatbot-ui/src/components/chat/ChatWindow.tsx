@@ -16,6 +16,8 @@ import type { Message, MenuItemResult } from "@/types/api";
 import { MessageBubble } from "./MessageBubble";
 import { TypingIndicator } from "./TypingIndicator";
 import { OfferCard } from "./OfferCard";
+import { SuggestionChips } from "./SuggestionChips";
+import { FilterChips } from "./FilterChips";
 import {
   Send,
   Mic,
@@ -61,10 +63,13 @@ export function ChatWindow({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to latest message with smooth behavior
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
     }
   }, [messages, isLoading]);
 
@@ -183,16 +188,58 @@ export function ChatWindow({
           )}
 
           {/* Messages */}
-          <div className="flex flex-col gap-4">
+          <motion.div
+            className="flex flex-col gap-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ staggerChildren: 0.1, delayChildren: 0.1 }}
+          >
             {messages.map((message) => (
-              <MessageBubble
+              <motion.div
                 key={message.id}
-                message={message}
-                onAddToCart={onAddToCart}
-                onQuickReply={handleQuickReply}
-              />
+                className="flex flex-col gap-2.5"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                layout
+              >
+                <MessageBubble
+                  message={message}
+                  onAddToCart={onAddToCart}
+                  onQuickReply={handleQuickReply}
+                />
+
+                {/* Assistant-only: Show suggestions and filters */}
+                {message.role === "assistant" && (
+                  <motion.div
+                    className="space-y-2.5 pl-11"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2, duration: 0.3 }}
+                  >
+                    {/* Filter Chips */}
+                    {message.intent && (
+                      <FilterChips
+                        filters={{
+                          intent: message.intent,
+                          confidence: message.confidence,
+                        }}
+                      />
+                    )}
+
+                    {/* Suggestion Chips */}
+                    {message.role === "assistant" && (
+                      <SuggestionChips
+                        intent={message.intent}
+                        resultsCount={message.menuItems?.length ?? 0}
+                        onSuggestClick={handleQuickReply}
+                      />
+                    )}
+                  </motion.div>
+                )}
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
 
           {/* Typing Indicator */}
           {isLoading && <TypingIndicator />}
