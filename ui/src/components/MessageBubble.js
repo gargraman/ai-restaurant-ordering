@@ -13,20 +13,20 @@ const MessageBubble = ({ role, content, results, timestamp, sessionId }) => {
       aria-label={`${role} message`}
     >
       <div
-        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${isUser ? 'bg-restaurant-primary text-white' : 'bg-white border border-gray-200'} shadow-sm`}
+        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${isUser ? 'bg-blue-500 text-white' : 'bg-white border border-gray-200'}`}
         role="article"
         aria-atomic="true"
       >
-        <div className="whitespace-pre-wrap break-words" tabIndex="0" aria-label={isUser ? `User message: ${content}` : `Assistant message: ${content}`}>{content}</div>
+        <div className="whitespace-pre-wrap break-words" tabIndex="0">{content}</div>
 
         {results && (
           <>
             {results.length > 0 ? (
               <div className="mt-3 space-y-3">
-                <p className="font-medium text-gray-700" tabIndex="0" aria-label="Restaurant recommendations">Here are some options I found:</p>
+                <p className="font-medium text-gray-700" tabIndex="0">Here are some options I found:</p>
                 <div className="space-y-3" role="list" aria-label="Restaurant recommendations">
                   {results.slice(0, 5).map((result) => (
-                    <div key={result.doc_id} role="listitem" aria-labelledby={`restaurant-${result.doc_id}`}>
+                    <div key={result.doc_id} role="listitem">
                       <RestaurantCard restaurant={result} sessionId={sessionId} />
                     </div>
                   ))}
@@ -34,9 +34,9 @@ const MessageBubble = ({ role, content, results, timestamp, sessionId }) => {
               </div>
             ) : (
               <div className="mt-3">
-                <p className="text-gray-600 italic" tabIndex="0" aria-label="No restaurant options found">No specific restaurant options found for this query.</p>
+                <p className="text-gray-600 italic" tabIndex="0">No specific restaurant options found for this query.</p>
               </div>
-            )}
+            )
           </>
         )}
 

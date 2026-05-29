@@ -19,8 +19,7 @@
     "lucide-react": "^0.294.0",
     "tailwind-merge": "^2.0.0",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "^9.0.1",
-    "@stripe/stripe-js": "^2.0.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "typescript": "^5",

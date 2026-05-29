@@ -51,12 +51,8 @@ export const ChatProvider = ({ children }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
 
   // Actions
-  const setMessages = (messagesOrUpdater) => {
-    if (typeof messagesOrUpdater === 'function') {
-      dispatch({ type: 'SET_MESSAGES', payload: messagesOrUpdater(state.messages) });
-    } else {
-      dispatch({ type: 'SET_MESSAGES', payload: messagesOrUpdater });
-    }
+  const setMessages = (messages) => {
+    dispatch({ type: 'SET_MESSAGES', payload: messages });
   };
 
   const addMessage = (message) => {

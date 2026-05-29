@@ -26,7 +26,7 @@ const MessageList = ({ messages, isLoading, error, sessionId }) => {
         />
       ))}
 
-      {error && <ErrorMessage message={error} onRetry={() => window.location.reload()} />}
+      {error && <ErrorMessage message={error} />}
 
       {isLoading && <LoadingIndicator />}
 

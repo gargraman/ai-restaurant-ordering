@@ -18,7 +18,7 @@ const PromptSuggestions = ({ onSelect, className = '' }) => {
         <button
           key={index}
           onClick={() => onSelect(prompt)}
-          className="bg-white border border-gray-200 rounded-full px-3 py-1.5 text-xs sm:text-sm hover:bg-gray-50 hover:border-gray-300 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-restaurant-primary"
+          className="bg-white border border-gray-200 rounded-full px-3 py-1.5 text-xs sm:text-sm hover:bg-gray-50 hover:border-gray-300 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-blue-500"
           aria-label={`Suggestion: ${prompt}`}
         >
           {prompt}

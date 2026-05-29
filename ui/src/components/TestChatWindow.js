@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import MessageList from '@/components/MessageList';
-import InputArea from '@/components/InputArea';
+import MessageList from '../MessageList';
+import InputArea from '../InputArea';
 import { mockChatSearch, mockGetSession, mockDeleteSession } from '@/lib/mock-api-client';
 import { useChatContext } from '@/contexts/ChatContext';
 import analyticsTracker from '@/lib/analytics/tracker';

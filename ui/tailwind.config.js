@@ -8,9 +8,6 @@ module.exports = {
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
@@ -57,10 +54,6 @@ module.exports = {
           '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))',
         },
-        // Restaurant-themed colors
-        'restaurant-primary': 'hsl(var(--restaurant-primary))',
-        'restaurant-secondary': 'hsl(var(--restaurant-secondary))',
-        'restaurant-accent': 'hsl(var(--restaurant-accent))',
       },
       keyframes: {
         'accordion-down': {

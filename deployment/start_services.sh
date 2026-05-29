@@ -21,17 +21,6 @@ fi
 
 cd "$DOCKER_DIR"
 
-# Stop and remove any existing containers with the same names to prevent conflicts
-echo "Checking for existing containers..."
-EXISTING_CONTAINERS=$(docker ps -aq -f name=^/hybrid-search-)
-if [ ! -z "$EXISTING_CONTAINERS" ]; then
-    echo "Found existing hybrid-search containers. Stopping and removing them..."
-    docker stop $EXISTING_CONTAINERS 2>/dev/null || true
-    docker rm $EXISTING_CONTAINERS 2>/dev/null || true
-else
-    echo "No existing hybrid-search containers found."
-fi
-
 # Start all services (infrastructure, API, and UI)
 echo "Starting all services (OpenSearch, PostgreSQL, Redis, API, and UI)..."
 $COMPOSE_CMD up -d opensearch postgres redis api ui

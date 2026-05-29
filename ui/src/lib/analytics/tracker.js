@@ -1,102 +1,117 @@
-// Analytics tracker utility
-const analyticsTracker = {
-  // Track when a query is submitted
-  trackQuerySubmitted: (query, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'search_query', {
-        search_term: query,
-        session_id: sessionId,
-        page_title: document.title
-      });
-    }
-    console.log('Query submitted:', { query, sessionId });
-  },
+// Analytics utility for tracking user interactions
 
-  // Track when a result is clicked
-  trackResultClicked: (docId, restaurantName, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'click_result', {
-        restaurant_name: restaurantName,
-        doc_id: docId,
-        session_id: sessionId
-      });
-    }
-    console.log('Result clicked:', { docId, restaurantName, sessionId });
-  },
-
-  // Track when an item is added to cart
-  trackAddToCart: (docId, itemName, restaurantName, price, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'add_to_cart', {
-        item_id: docId,
-        item_name: itemName,
-        restaurant_name: restaurantName,
-        currency: 'USD',
-        value: price,
-        session_id: sessionId
-      });
-    }
-    console.log('Added to cart:', { docId, itemName, restaurantName, price, sessionId });
-  },
-
-  // Track when a session is reset
-  trackSessionReset: (sessionId, messageCount) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'session_reset', {
-        session_id: sessionId,
-        message_count: messageCount
-      });
-    }
-    console.log('Session reset:', { sessionId, messageCount });
-  },
-
-  // Track zero result queries
-  trackZeroResultQuery: (query, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'zero_results', {
-        search_term: query,
-        session_id: sessionId
-      });
-    }
-    console.log('Zero results query:', { query, sessionId });
-  },
-
-  // Track feedback submission
-  trackFeedbackSubmitted: (docId, restaurantName, rating, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'feedback_submitted', {
-        item_id: docId,
-        restaurant_name: restaurantName,
-        rating: rating,
-        session_id: sessionId
-      });
-    }
-    console.log('Feedback submitted:', { docId, restaurantName, rating, sessionId });
-  },
-
-  // Track feedback failures
-  trackFeedbackFailed: (docId, errorMessage, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'feedback_failed', {
-        item_id: docId,
-        error_message: errorMessage,
-        session_id: sessionId
-      });
-    }
-    console.error('Feedback failed:', { docId, errorMessage, sessionId });
-  },
-
-  // Track general errors
-  trackError: (errorMessage, errorType, sessionId) => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'error_occurred', {
-        error_message: errorMessage,
-        error_type: errorType,
-        session_id: sessionId
-      });
-    }
-    console.error('Error tracked:', { errorMessage, errorType, sessionId });
+// Simple analytics tracker - in a real app, you might use Google Analytics, Mixpanel, etc.
+class AnalyticsTracker {
+  constructor() {
+    // In a real implementation, initialize your analytics provider here
+    // For example: ga('create', 'GA_MEASUREMENT_ID', 'auto');
   }
-};
+
+  // Track when a user submits a query
+  trackQuerySubmitted(query, sessionId) {
+    console.log('[Analytics] Query submitted:', { query, sessionId });
+
+    // In a real implementation:
+    // ga('send', 'event', 'Search', 'query_submitted', query);
+
+    // Log to console for development
+    this.logEvent('query_submitted', { query, sessionId });
+  }
+
+  // Track when a user clicks on a result
+  trackResultClicked(docId, restaurantName, sessionId) {
+    console.log('[Analytics] Result clicked:', { docId, restaurantName, sessionId });
+
+    // In a real implementation:
+    // ga('send', 'event', 'Search', 'result_clicked', restaurantName);
+
+    this.logEvent('result_clicked', { docId, restaurantName, sessionId });
+  }
+
+  // Track zero-result queries
+  trackZeroResultQuery(query, sessionId) {
+    console.log('[Analytics] Zero result query:', { query, sessionId });
+
+    this.logEvent('zero_result_query', { query, sessionId });
+  }
+
+  // Track when an error occurs
+  trackError(errorMessage, errorType = 'general', sessionId = null) {
+    console.error('[Analytics] Error tracked:', { errorMessage, errorType, sessionId });
+
+    this.logEvent('error_occurred', { errorMessage, errorType, sessionId });
+  }
+
+  // Track session reset
+  trackSessionReset(sessionId, messageCount) {
+    console.log('[Analytics] Session reset:', { sessionId, messageCount });
+
+    this.logEvent('session_reset', {
+      sessionId,
+      messageCount,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Track when feedback is submitted
+  trackFeedbackSubmitted(docId, restaurantName, rating, sessionId) {
+    console.log('[Analytics] Feedback submitted:', {
+      docId,
+      restaurantName,
+      rating,
+      sessionId
+    });
+
+    this.logEvent('feedback_submitted', {
+      docId,
+      restaurantName,
+      rating,
+      ratingType: rating >= 3 ? 'positive' : 'negative',
+      sessionId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Track when feedback submission fails
+  trackFeedbackFailed(docId, errorMessage, sessionId) {
+    console.error('[Analytics] Feedback failed:', {
+      docId,
+      errorMessage,
+      sessionId
+    });
+
+    this.logEvent('feedback_failed', {
+      docId,
+      errorMessage,
+      sessionId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Generic event logging
+  logEvent(eventName, properties = {}) {
+    // In a real app, send to your analytics backend
+    const event = {
+      eventName,
+      properties,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+
+    // Send to a logging endpoint (would need to be implemented on the backend)
+    // fetch('/api/log-event', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify(event)
+    // }).catch(console.error);
+
+    // For now, just log to console
+    console.log('[Analytics Event]', event);
+  }
+}
+
+// Create a singleton instance
+const analyticsTracker = new AnalyticsTracker();
 
 export default analyticsTracker;

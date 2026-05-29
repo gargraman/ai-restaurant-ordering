@@ -1,21 +1,18 @@
 const LoadingIndicator = () => {
   return (
-    <div className="flex justify-start animate-in" role="status" aria-live="polite">
-      <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-        <div className="flex items-center space-x-2" aria-label="Assistant is typing">
+    <div className="flex justify-start" role="status" aria-live="polite">
+      <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
+        <div className="flex space-x-2" aria-label="Loading">
           <div
-            className="w-2 h-2 bg-restaurant-primary rounded-full animate-bounce"
-            style={{ animationDelay: '0ms' }}
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
             aria-hidden="true"
           ></div>
           <div
-            className="w-2 h-2 bg-restaurant-primary rounded-full animate-bounce"
-            style={{ animationDelay: '300ms' }}
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"
             aria-hidden="true"
           ></div>
           <div
-            className="w-2 h-2 bg-restaurant-primary rounded-full animate-bounce"
-            style={{ animationDelay: '600ms' }}
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"
             aria-hidden="true"
           ></div>
         </div>
